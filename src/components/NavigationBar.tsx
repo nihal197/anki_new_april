@@ -1,86 +1,76 @@
 import React from "react";
-import { Link } from "react-router-dom";
-import { BookOpen, Brain, User, Award, Home as HomeIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Link, useLocation } from "react-router-dom";
+import { cn } from "../lib/utils";
+import { ThemeToggle } from "./ThemeToggle";
 
-interface NavItemProps {
-  icon: React.ReactNode;
-  label: string;
-  to: string;
-  active?: boolean;
+interface NavItem {
+  name: string;
+  href: string;
+  icon?: React.ReactNode;
 }
-
-const NavItem = ({ icon, label, to, active = false }: NavItemProps) => (
-  <Link
-    to={to}
-    className={cn(
-      "flex items-center gap-2 p-2 rounded-md transition-colors duration-200",
-      active
-        ? "bg-primary/20 text-primary font-medium"
-        : "text-muted-foreground hover:bg-primary/10 hover:text-primary hover:scale-105",
-    )}
-  >
-    <div className="flex items-center justify-center w-5 h-5">{icon}</div>
-    <span>{label}</span>
-  </Link>
-);
 
 interface NavigationBarProps {
   variant?: "side" | "top";
-  className?: string;
 }
 
-const NavigationBar = ({ variant = "side", className }: NavigationBarProps) => {
-  // Get current path to highlight active link
-  const currentPath = window.location.pathname;
+export function NavigationBar({ variant = "top" }: NavigationBarProps) {
+  const location = useLocation();
+  const pathname = location.pathname;
 
-  const navItems = [
+  const navItems: NavItem[] = [
     {
-      icon: <HomeIcon className="h-5 w-5" />,
-      label: "Home",
-      to: "/",
+      name: "Home",
+      href: "/",
     },
     {
-      icon: <BookOpen className="h-5 w-5" />,
-      label: "Study",
-      to: "/study",
+      name: "Study",
+      href: "/study",
     },
     {
-      icon: <Brain className="h-5 w-5" />,
-      label: "Practice",
-      to: "/practice",
+      name: "Practice",
+      href: "/practice",
     },
     {
-      icon: <User className="h-5 w-5" />,
-      label: "About You",
-      to: "/about-you",
+      name: "About You",
+      href: "/about-you",
     },
   ];
 
-  if (variant === "top") {
-    return (
-      <nav className={cn("bg-primary/5 border-b shadow-sm", className)}>
-        <div className="container flex items-center gap-6 h-16">
-          {navItems.map((item) => (
-            <NavItem key={item.to} {...item} active={currentPath === item.to} />
-          ))}
-        </div>
-      </nav>
-    );
-  }
-
   return (
-    <nav
-      className={cn(
-        "bg-background border-r h-full w-56 p-4 flex flex-col gap-2",
-        className,
-      )}
-    >
-      {navItems.map((item) => (
-        <NavItem key={item.to} {...item} active={currentPath === item.to} />
-      ))}
-    </nav>
+    <header className="fixed top-0 left-0 right-0 z-50 bg-background border-b">
+      <div className="container mx-auto px-4">
+        <div className="flex h-16 items-center justify-between">
+          <div className="flex-1 flex items-center">
+            <Link to="/" className="font-bold text-lg">
+              AnkiFlow
+            </Link>
+          </div>
+          <nav className="flex items-center space-x-4">
+            {navItems.map((item) => {
+              const isActive = (pathname === "/" && item.href === "/") ||
+                (pathname !== "/" && item.href !== "/" && pathname.startsWith(item.href));
+              
+              return (
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  className={cn(
+                    "px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                  )}
+                >
+                  {item.name}
+                </Link>
+              );
+            })}
+            <div className="ml-2">
+              <ThemeToggle />
+            </div>
+          </nav>
+        </div>
+      </div>
+    </header>
   );
-};
-
-export default NavigationBar;
+}

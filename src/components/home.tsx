@@ -12,7 +12,6 @@ import {
   Calendar,
   BookMarked,
 } from "lucide-react";
-import NavigationBar from "./NavigationBar";
 
 import {
   Card,
@@ -28,7 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const Home = () => {
+export default function Home() {
   // Mock data for the dashboard
   const studentProgress = {
     overall: 68,
@@ -96,12 +95,10 @@ const Home = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Main Content */}
-      <div className="flex-1 p-6 md:p-8 overflow-auto">
-        {/* Header with user info */}
-        <div className="flex justify-between items-center mb-8">
-          <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-background pb-10">
+      <div className="container mx-auto px-4 py-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center">
             <Avatar className="h-12 w-12 border-2 border-primary">
               <AvatarImage
                 src="https://api.dicebear.com/7.x/avataaars/svg?seed=student123"
@@ -131,10 +128,6 @@ const Home = () => {
         <section className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold">Your Progress</h2>
-            <Badge variant="outline" className="flex items-center gap-1">
-              <Zap className="h-3 w-3" />
-              Level {studentProgress.level} Scholar
-            </Badge>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -257,20 +250,20 @@ const Home = () => {
         {/* Main Dashboard Content */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Left Column - Upcoming Tasks */}
-          <Card className="col-span-1">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <Card className="col-span-1 overflow-hidden border border-border/40 shadow-sm hover:shadow-md transition-shadow dark:bg-card">
+            <CardHeader className="bg-gray-50 dark:bg-card/60 pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
                 <Calendar className="h-5 w-5 text-primary" />
                 Upcoming Tasks
               </CardTitle>
               <CardDescription>Your scheduled activities</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+            <CardContent className="pt-4">
+              <div className="space-y-3">
                 {upcomingTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="flex items-center gap-3 p-3 rounded-lg border hover:bg-accent/50 transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-lg border border-border/60 bg-white dark:bg-card/80 hover:bg-gray-50 dark:hover:bg-card/50 transition-colors"
                   >
                     <div
                       className={`p-2 rounded-full ${task.urgent ? "bg-red-100 text-red-600" : "bg-blue-100 text-blue-600"}`}
@@ -298,7 +291,7 @@ const Home = () => {
                 ))}
               </div>
             </CardContent>
-            <CardFooter>
+            <CardFooter className="pt-0 pb-4">
               <Button variant="outline" className="w-full">
                 View All Tasks
               </Button>
@@ -306,41 +299,43 @@ const Home = () => {
           </Card>
 
           {/* Middle Column - Recent Topics */}
-          <Card className="col-span-1">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <Card className="col-span-1 overflow-hidden border border-border/40 shadow-sm hover:shadow-md transition-shadow dark:bg-card">
+            <CardHeader className="bg-gray-50 dark:bg-card/60 pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
                 <BookOpen className="h-5 w-5 text-primary" />
                 Recent Topics
               </CardTitle>
               <CardDescription>Continue where you left off</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-4">
               <div className="space-y-4">
                 {recentTopics.map((topic) => (
                   <div
                     key={topic.id}
-                    className="p-3 rounded-lg border hover:bg-accent/50 transition-colors"
+                    className="p-3 rounded-lg border border-border/60 bg-white dark:bg-card/80 hover:bg-gray-50 dark:hover:bg-card/50 transition-colors"
                   >
                     <div className="flex justify-between items-center mb-2">
                       <h3 className="font-medium">{topic.title}</h3>
-                      <Badge variant="outline">{topic.subject}</Badge>
+                      <Badge variant="outline" className="bg-primary/5">{topic.subject}</Badge>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 mb-3">
                       <div className="flex justify-between text-sm">
                         <span>Progress</span>
                         <span>{topic.progress}%</span>
                       </div>
-                      <Progress value={topic.progress} />
+                      <Progress value={topic.progress} className="h-2" />
                     </div>
-                    <Button variant="ghost" size="sm" className="mt-2 w-full">
-                      Continue Learning
-                      <ChevronRight className="h-4 w-4 ml-1" />
-                    </Button>
+                    <Link to="/study" className="block">
+                      <Button size="sm" className="w-full">
+                        Continue Learning
+                        <ChevronRight className="ml-1 h-4 w-4" />
+                      </Button>
+                    </Link>
                   </div>
                 ))}
               </div>
             </CardContent>
-            <CardFooter>
+            <CardFooter className="pt-0 pb-4">
               <Button variant="outline" className="w-full">
                 Browse All Topics
               </Button>
@@ -348,11 +343,11 @@ const Home = () => {
           </Card>
 
           {/* Right Column - Quick Access & Motivation */}
-          <div className="col-span-1 space-y-6">
-            {/* Motivational Quote Card - Moved up to replace Quick Access */}
-            <Card className="bg-gradient-to-r from-primary/10 to-background mb-6">
-              <CardContent className="pt-6">
-                <blockquote className="italic text-lg text-center">
+          <div className="col-span-1 space-y-5">
+            {/* Motivational Quote Card */}
+            <Card className="border border-border/40 bg-gradient-to-r from-primary/5 to-background shadow-sm overflow-hidden dark:from-primary/10 dark:to-background">
+              <CardContent className="p-5">
+                <blockquote className="italic text-lg font-serif text-center">
                   "{motivationalQuote.text}"
                 </blockquote>
                 <p className="text-right text-sm text-muted-foreground mt-2">
@@ -362,19 +357,19 @@ const Home = () => {
             </Card>
 
             {/* Badges */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+            <Card className="border border-border/40 shadow-sm overflow-hidden">
+              <CardHeader className="bg-gray-50 dark:bg-card/60 pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
                   <Award className="h-5 w-5 text-primary" />
                   Recent Badges
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="flex gap-3 overflow-x-auto pb-2">
+              <CardContent className="pt-4">
+                <div className="flex justify-center gap-3 pb-2">
                   {studentProgress.badges.map((badge, index) => (
                     <motion.div
                       key={index}
-                      className="flex-shrink-0 w-24 flex flex-col items-center text-center p-3 rounded-lg border"
+                      className="flex-shrink-0 w-24 flex flex-col items-center text-center p-3 rounded-lg border bg-white dark:bg-card/80 shadow-sm"
                       whileHover={{ y: -5, transition: { duration: 0.2 } }}
                     >
                       <div className="text-3xl mb-2">{badge.icon}</div>
@@ -384,11 +379,61 @@ const Home = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Quick Access Buttons */}
+            <div className="grid grid-cols-3 gap-3">
+              <Link to="/study" className="col-span-1">
+                <Card className="h-full border border-border/40 bg-white dark:bg-card/80 shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
+                  <CardContent className="p-4 flex flex-col items-center text-center">
+                    <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center mb-2">
+                      <BookOpen className="h-5 w-5 text-blue-700" />
+                    </div>
+                    <h3 className="font-medium">Study</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Interactive lessons
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+
+              <Link to="/practice" className="col-span-1">
+                <Card className="h-full border border-border/40 bg-white dark:bg-card/80 shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
+                  <CardContent className="p-4 flex flex-col items-center text-center">
+                    <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center mb-2">
+                      <Brain className="h-5 w-5 text-purple-700" />
+                    </div>
+                    <h3 className="font-medium">Practice</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Quizzes & flashcards
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+
+              <Link to="/about-you" className="col-span-1">
+                <Card className="h-full border border-border/40 bg-white dark:bg-card/80 shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
+                  <CardContent className="p-4 flex flex-col items-center text-center">
+                    <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center mb-2">
+                      <User className="h-5 w-5 text-green-700" />
+                    </div>
+                    <h3 className="font-medium">About You</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Analytics & progress
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            </div>
+
+            <Button variant="default" className="w-full mt-2" asChild>
+              <Link to="/practice">
+                Go to Practice Area
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
           </div>
         </div>
       </div>
     </div>
   );
-};
-
-export default Home;
+}
