@@ -1,15 +1,17 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 import {
   BarChart,
   Activity,
@@ -19,6 +21,12 @@ import {
   Target,
   BookOpen,
   Zap,
+  Star,
+  AlertTriangle,
+  TrendingUp,
+  CheckCircle,
+  ChevronRight,
+  Lock,
 } from "lucide-react";
 
 interface PerformanceAnalyticsProps {
@@ -70,19 +78,70 @@ const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
     { skill: "Biology", level: 5, maxLevel: 10 },
   ],
 }) => {
+  const [activeTab, setActiveTab] = useState("overview");
+  const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
+  const [expandedAchievement, setExpandedAchievement] = useState<string | null>(null);
+
+  const handleSelectSkill = (skill: string) => {
+    setSelectedSkill(skill === selectedSkill ? null : skill);
+  };
+
+  const handleExpandAchievement = (title: string) => {
+    setExpandedAchievement(title === expandedAchievement ? null : title);
+  };
+
+  // Detailed skill data for the skill tree
+  const detailedSkillData = {
+    Mathematics: [
+      { subtopic: "Algebra", level: 8, maxLevel: 10 },
+      { subtopic: "Calculus", level: 7, maxLevel: 10 },
+      { subtopic: "Geometry", level: 9, maxLevel: 10 },
+      { subtopic: "Trigonometry", level: 5, maxLevel: 10 },
+      { subtopic: "Statistics", level: 6, maxLevel: 10 },
+    ],
+    Physics: [
+      { subtopic: "Mechanics", level: 8, maxLevel: 10 },
+      { subtopic: "Thermodynamics", level: 5, maxLevel: 10 },
+      { subtopic: "Optics", level: 7, maxLevel: 10 },
+      { subtopic: "Electromagnetism", level: 4, maxLevel: 10 },
+      { subtopic: "Modern Physics", level: 6, maxLevel: 10 },
+    ],
+    Chemistry: [
+      { subtopic: "Organic Chemistry", level: 3, maxLevel: 10 },
+      { subtopic: "Inorganic Chemistry", level: 5, maxLevel: 10 },
+      { subtopic: "Physical Chemistry", level: 4, maxLevel: 10 },
+      { subtopic: "Analytical Chemistry", level: 4, maxLevel: 10 },
+    ],
+    Biology: [
+      { subtopic: "Cell Biology", level: 6, maxLevel: 10 },
+      { subtopic: "Genetics", level: 7, maxLevel: 10 },
+      { subtopic: "Anatomy", level: 4, maxLevel: 10 },
+      { subtopic: "Ecology", level: 3, maxLevel: 10 },
+    ],
+  };
+
+  // Calculate total achievements and unlocked achievements
+  const totalAchievements = achievements.length;
+  const unlockedAchievements = achievements.filter(a => a.unlocked).length;
+
   return (
-    <div className="bg-gray-50 p-6 rounded-xl w-full max-w-6xl mx-auto">
+    <div className="bg-background p-6 rounded-xl w-full max-w-6xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-2">
+        <h1 className="text-3xl font-bold mb-2">
           Your Performance Analytics
         </h1>
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           Track your progress, identify areas for improvement, and celebrate
           your achievements
         </p>
       </div>
 
-      <Tabs defaultValue="overview" className="w-full">
+      <Tabs 
+        defaultValue="overview" 
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="w-full"
+      >
         <TabsList className="mb-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="strengths-weaknesses">
@@ -94,10 +153,10 @@ const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
 
         <TabsContent value="overview" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card>
+            <Card className="border border-border/40">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center">
-                  <Target className="h-5 w-5 mr-2 text-blue-500" />
+                  <Target className="h-5 w-5 mr-2 text-blue-500 dark:text-blue-400" />
                   Syllabus Coverage
                 </CardTitle>
               </CardHeader>
@@ -105,7 +164,7 @@ const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
                 <div className="flex flex-col items-center">
                   <div className="relative h-32 w-32 mb-4">
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-3xl font-bold text-blue-600">
+                      <span className="text-3xl font-bold text-blue-600 dark:text-blue-400">
                         {syllabusCoverage}%
                       </span>
                     </div>
@@ -117,6 +176,7 @@ const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
                         fill="none"
                         stroke="#e2e8f0"
                         strokeWidth="10"
+                        className="dark:stroke-gray-700"
                       />
                       <circle
                         cx="50"
@@ -128,10 +188,11 @@ const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
                         strokeDasharray={`${syllabusCoverage * 2.83} 283`}
                         strokeLinecap="round"
                         transform="rotate(-90 50 50)"
+                        className="dark:stroke-blue-400"
                       />
                     </svg>
                   </div>
-                  <p className="text-sm text-gray-600 text-center">
+                  <p className="text-sm text-muted-foreground text-center">
                     You've covered {syllabusCoverage}% of the total syllabus.
                     Keep going!
                   </p>
@@ -139,27 +200,27 @@ const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border border-border/40">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center">
-                  <Clock className="h-5 w-5 mr-2 text-purple-500" />
+                  <Clock className="h-5 w-5 mr-2 text-purple-500 dark:text-purple-400" />
                   Average Response Time
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-col items-center">
-                  <div className="text-5xl font-bold text-purple-600 mb-4">
+                  <div className="text-5xl font-bold text-purple-600 dark:text-purple-400 mb-4">
                     {averageTimePerQuestion}s
                   </div>
-                  <div className="w-full bg-gray-200 h-2 rounded-full mb-2">
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full mb-2">
                     <div
-                      className="bg-purple-500 h-2 rounded-full"
+                      className="bg-purple-500 dark:bg-purple-400 h-2 rounded-full"
                       style={{
                         width: `${Math.min(100, (60 - averageTimePerQuestion) * 2)}%`,
                       }}
                     ></div>
                   </div>
-                  <p className="text-sm text-gray-600 text-center">
+                  <p className="text-sm text-muted-foreground text-center">
                     {averageTimePerQuestion < 30
                       ? "Excellent speed!"
                       : averageTimePerQuestion < 45
@@ -170,46 +231,46 @@ const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border border-border/40">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center">
-                  <Activity className="h-5 w-5 mr-2 text-green-500" />
+                  <Activity className="h-5 w-5 mr-2 text-green-500 dark:text-green-400" />
                   Recent Activity
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
                   <div className="flex items-center">
-                    <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center mr-3">
-                      <BookOpen className="h-4 w-4 text-green-600" />
+                    <div className="h-8 w-8 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mr-3">
+                      <BookOpen className="h-4 w-4 text-green-600 dark:text-green-400" />
                     </div>
                     <div>
                       <p className="text-sm font-medium">
                         Completed Physics Module 3
                       </p>
-                      <p className="text-xs text-gray-500">2 hours ago</p>
+                      <p className="text-xs text-muted-foreground">2 hours ago</p>
                     </div>
                   </div>
                   <div className="flex items-center">
-                    <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center mr-3">
-                      <Zap className="h-4 w-4 text-blue-600" />
+                    <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center mr-3">
+                      <Zap className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     </div>
                     <div>
                       <p className="text-sm font-medium">
                         Mastered Integration Techniques
                       </p>
-                      <p className="text-xs text-gray-500">Yesterday</p>
+                      <p className="text-xs text-muted-foreground">Yesterday</p>
                     </div>
                   </div>
                   <div className="flex items-center">
-                    <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center mr-3">
-                      <Award className="h-4 w-4 text-purple-600" />
+                    <div className="h-8 w-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center mr-3">
+                      <Award className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                     </div>
                     <div>
                       <p className="text-sm font-medium">
                         Earned "Quick Thinker" Badge
                       </p>
-                      <p className="text-xs text-gray-500">2 days ago</p>
+                      <p className="text-xs text-muted-foreground">2 days ago</p>
                     </div>
                   </div>
                 </div>
@@ -244,15 +305,26 @@ const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
                 ))}
               </div>
             </CardContent>
+            <CardFooter>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="ml-auto"
+                onClick={() => setActiveTab("strengths-weaknesses")}
+              >
+                View Detailed Analysis
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </CardFooter>
           </Card>
         </TabsContent>
 
         <TabsContent value="strengths-weaknesses" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="border-l-4 border-green-500">
-              <CardHeader>
-                <CardTitle className="text-green-600 flex items-center">
-                  <Award className="h-5 w-5 mr-2" />
+            <Card className="border border-border/40">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg flex items-center">
+                  <Star className="h-5 w-5 mr-2 text-yellow-500 dark:text-yellow-400" />
                   Your Strengths
                 </CardTitle>
                 <CardDescription>
@@ -260,57 +332,44 @@ const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {strengths.map((strength, index) => (
                     <div
                       key={index}
-                      className="flex items-center p-3 bg-green-50 rounded-lg"
+                      className="p-3 bg-green-50 dark:bg-green-900/30 border border-green-100 dark:border-green-700 rounded-md flex items-center"
                     >
-                      <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center mr-3">
-                        <span className="text-green-600 font-bold">
-                          {index + 1}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="font-medium text-green-800">{strength}</p>
-                        <p className="text-xs text-green-600">
-                          You excel at this topic!
-                        </p>
-                      </div>
+                      <CheckCircle className="h-5 w-5 text-green-500 dark:text-green-400 mr-2" />
+                      <span>{strength}</span>
                     </div>
                   ))}
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-l-4 border-amber-500">
-              <CardHeader>
-                <CardTitle className="text-amber-600 flex items-center">
-                  <Target className="h-5 w-5 mr-2" />
+            <Card className="border border-border/40">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg flex items-center">
+                  <AlertTriangle className="h-5 w-5 mr-2 text-red-500 dark:text-red-400" />
                   Areas for Improvement
                 </CardTitle>
                 <CardDescription>
-                  Topics that need more attention and practice
+                  Topics that need more attention
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {weaknesses.map((weakness, index) => (
                     <div
                       key={index}
-                      className="flex items-center p-3 bg-amber-50 rounded-lg"
+                      className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-100 dark:border-red-800 rounded-md flex items-center justify-between"
                     >
-                      <div className="h-8 w-8 rounded-full bg-amber-100 flex items-center justify-center mr-3">
-                        <span className="text-amber-600 font-bold">
-                          {index + 1}
-                        </span>
+                      <div className="flex items-center">
+                        <AlertTriangle className="h-5 w-5 text-red-500 dark:text-red-400 mr-2" />
+                        <span>{weakness}</span>
                       </div>
-                      <div>
-                        <p className="font-medium text-amber-800">{weakness}</p>
-                        <p className="text-xs text-amber-600">
-                          Focus on improving this area
-                        </p>
-                      </div>
+                      <Button variant="outline" size="sm" className="text-xs h-7 px-2 border-red-200 dark:border-red-700">
+                        Study
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -321,40 +380,39 @@ const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                <BarChart className="h-5 w-5 mr-2 text-blue-500" />
-                Subject-wise Performance
+                <Activity className="h-5 w-5 mr-2 text-blue-500" />
+                Subject Performance
               </CardTitle>
+              <CardDescription>
+                Your performance across different subjects
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="font-medium">Mathematics</span>
-                    <span>85%</span>
+                {skillLevels.map((skill) => (
+                  <div key={skill.skill} className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">{skill.skill}</span>
+                      <span className="text-sm text-gray-600">
+                        Level {skill.level}/{skill.maxLevel}
+                      </span>
+                    </div>
+                    <div className="relative h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={`absolute top-0 left-0 h-full rounded-full ${
+                          skill.skill === "Mathematics"
+                            ? "bg-blue-500"
+                            : skill.skill === "Physics"
+                            ? "bg-purple-500"
+                            : skill.skill === "Chemistry"
+                            ? "bg-green-500"
+                            : "bg-yellow-500"
+                        }`}
+                        style={{ width: `${(skill.level / skill.maxLevel) * 100}%` }}
+                      ></div>
+                    </div>
                   </div>
-                  <Progress value={85} className="h-2" />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="font-medium">Physics</span>
-                    <span>78%</span>
-                  </div>
-                  <Progress value={78} className="h-2" />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="font-medium">Chemistry</span>
-                    <span>62%</span>
-                  </div>
-                  <Progress value={62} className="h-2" />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="font-medium">Biology</span>
-                    <span>70%</span>
-                  </div>
-                  <Progress value={70} className="h-2" />
-                </div>
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -362,232 +420,175 @@ const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
 
         <TabsContent value="skill-tree" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {skillLevels.map((skill, index) => (
-              <Card key={index}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">{skill.skill}</CardTitle>
-                  <CardDescription>
-                    Level {skill.level} / {skill.maxLevel}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="w-full bg-gray-200 h-4 rounded-full">
-                      <div
-                        className="bg-blue-500 h-4 rounded-full flex items-center justify-end pr-2"
-                        style={{
-                          width: `${(skill.level / skill.maxLevel) * 100}%`,
-                        }}
-                      >
-                        <span className="text-xs text-white font-bold">
-                          {skill.level}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-10 gap-1">
-                      {Array.from({ length: skill.maxLevel }).map((_, i) => (
-                        <div
-                          key={i}
-                          className={`h-2 rounded-full ${i < skill.level ? "bg-blue-500" : "bg-gray-200"}`}
-                        ></div>
-                      ))}
-                    </div>
-                    <div className="pt-2">
-                      <p className="text-sm text-gray-600">
-                        {skill.level < 3
-                          ? "Beginner"
-                          : skill.level < 6
-                            ? "Intermediate"
-                            : skill.level < 9
-                              ? "Advanced"
-                              : "Expert"}{" "}
-                        level
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {skill.maxLevel - skill.level} more levels to reach
-                        mastery
-                      </p>
-                    </div>
+            {skillLevels.map((mainSkill) => (
+              <Card 
+                key={mainSkill.skill} 
+                className={`${selectedSkill === mainSkill.skill ? 'ring-2 ring-primary' : ''}`}
+              >
+                <CardHeader 
+                  className="cursor-pointer" 
+                  onClick={() => handleSelectSkill(mainSkill.skill)}
+                >
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="flex items-center">
+                      {mainSkill.skill === "Mathematics" ? (
+                        <BookOpen className="h-5 w-5 mr-2 text-blue-500" />
+                      ) : mainSkill.skill === "Physics" ? (
+                        <Zap className="h-5 w-5 mr-2 text-purple-500" />
+                      ) : mainSkill.skill === "Chemistry" ? (
+                        <Activity className="h-5 w-5 mr-2 text-green-500" />
+                      ) : (
+                        <Brain className="h-5 w-5 mr-2 text-yellow-500" />
+                      )}
+                      {mainSkill.skill}
+                    </CardTitle>
+                    <Badge>Level {mainSkill.level}</Badge>
                   </div>
-                </CardContent>
+                  <Progress 
+                    value={(mainSkill.level / mainSkill.maxLevel) * 100} 
+                    className="h-2"
+                  />
+                </CardHeader>
+                
+                {selectedSkill === mainSkill.skill && (
+                  <CardContent>
+                    <div className="space-y-4 mt-2">
+                      {detailedSkillData[mainSkill.skill as keyof typeof detailedSkillData].map((subskill, idx) => (
+                        <div key={idx} className="space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium flex items-center">
+                              <span className="w-2 h-2 rounded-full bg-primary mr-2"></span>
+                              {subskill.subtopic}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              Level {subskill.level}/{subskill.maxLevel}
+                            </span>
+                          </div>
+                          <Progress 
+                            value={(subskill.level / subskill.maxLevel) * 100} 
+                            className={`h-1.5 ${
+                              subskill.level < 4 
+                                ? "bg-red-100" 
+                                : subskill.level < 7 
+                                  ? "bg-yellow-100" 
+                                  : "bg-green-100"
+                            }`}
+                          />
+                        </div>
+                      ))}
+                      <Button variant="outline" size="sm" className="w-full mt-4">
+                        See Learning Path
+                      </Button>
+                    </div>
+                  </CardContent>
+                )}
               </Card>
             ))}
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Skill Development Path</CardTitle>
-              <CardDescription>
-                Your journey to mastery across all subjects
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="relative">
-                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
-                <div className="space-y-8 relative">
-                  <div className="flex">
-                    <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center z-10 mr-4">
-                      <span className="text-white font-bold">1</span>
-                    </div>
-                    <div className="bg-blue-50 rounded-lg p-4 flex-1">
-                      <h4 className="font-medium text-blue-700">
-                        Fundamentals Mastered
-                      </h4>
-                      <p className="text-sm text-gray-600 mt-1">
-                        You've completed the basic concepts across all subjects
-                      </p>
-                      <Badge className="mt-2 bg-blue-100 text-blue-700 hover:bg-blue-100">
-                        Completed
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="flex">
-                    <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center z-10 mr-4">
-                      <span className="text-white font-bold">2</span>
-                    </div>
-                    <div className="bg-blue-50 rounded-lg p-4 flex-1">
-                      <h4 className="font-medium text-blue-700">
-                        Intermediate Concepts
-                      </h4>
-                      <p className="text-sm text-gray-600 mt-1">
-                        You're currently working through more advanced topics
-                      </p>
-                      <Badge className="mt-2 bg-green-100 text-green-700 hover:bg-green-100">
-                        In Progress
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="flex">
-                    <div className="h-8 w-8 rounded-full bg-gray-300 flex items-center justify-center z-10 mr-4">
-                      <span className="text-white font-bold">3</span>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-4 flex-1">
-                      <h4 className="font-medium text-gray-700">
-                        Advanced Applications
-                      </h4>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Complex problem-solving and application-based learning
-                      </p>
-                      <Badge className="mt-2 bg-gray-200 text-gray-700 hover:bg-gray-200">
-                        Locked
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="flex">
-                    <div className="h-8 w-8 rounded-full bg-gray-300 flex items-center justify-center z-10 mr-4">
-                      <span className="text-white font-bold">4</span>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-4 flex-1">
-                      <h4 className="font-medium text-gray-700">
-                        Mastery & Expertise
-                      </h4>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Complete mastery of all subjects and competitive exam
-                        readiness
-                      </p>
-                      <Badge className="mt-2 bg-gray-200 text-gray-700 hover:bg-gray-200">
-                        Locked
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="achievements" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {achievements.map((achievement, index) => (
-              <Card
-                key={index}
-                className={`${achievement.unlocked ? "border-2 border-yellow-400" : "opacity-75"}`}
-              >
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
-                    <CardTitle className="text-lg flex items-center">
-                      <Award
-                        className={`h-5 w-5 mr-2 ${achievement.unlocked ? "text-yellow-500" : "text-gray-400"}`}
-                      />
-                      {achievement.title}
-                    </CardTitle>
-                    {achievement.unlocked && (
-                      <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
-                        Unlocked
-                      </Badge>
-                    )}
-                    {!achievement.unlocked && (
-                      <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">
-                        Locked
-                      </Badge>
-                    )}
-                  </div>
-                  <CardDescription>{achievement.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div
-                    className={`p-4 rounded-lg ${achievement.unlocked ? "bg-yellow-50" : "bg-gray-50"}`}
-                  >
-                    <div className="flex justify-center">
-                      <div
-                        className={`h-16 w-16 rounded-full flex items-center justify-center ${achievement.unlocked ? "bg-yellow-100" : "bg-gray-200"}`}
-                      >
-                        <Award
-                          className={`h-8 w-8 ${achievement.unlocked ? "text-yellow-600" : "text-gray-400"}`}
-                        />
-                      </div>
-                    </div>
-                    <p className="text-center text-sm mt-3">
-                      {achievement.unlocked
-                        ? "Congratulations on earning this achievement!"
-                        : "Keep studying to unlock this achievement"}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
           <Card>
             <CardHeader>
-              <CardTitle>Achievement Progress</CardTitle>
+              <div className="flex justify-between items-center">
+                <CardTitle className="flex items-center">
+                  <Award className="h-5 w-5 mr-2 text-amber-500" />
+                  Your Achievements
+                </CardTitle>
+                <Badge variant="outline">
+                  {unlockedAchievements}/{totalAchievements} Unlocked
+                </Badge>
+              </div>
               <CardDescription>
-                You've unlocked {achievements.filter((a) => a.unlocked).length}{" "}
-                out of {achievements.length} achievements
+                Badges and milestones you've reached in your learning journey
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <Progress
-                  value={
-                    (achievements.filter((a) => a.unlocked).length /
-                      achievements.length) *
-                    100
-                  }
-                  className="h-2"
-                />
-                <div className="flex justify-between text-sm text-gray-500">
-                  <span>Beginner</span>
-                  <span>Intermediate</span>
-                  <span>Advanced</span>
-                  <span>Expert</span>
-                </div>
-                <Separator className="my-4" />
-                <div className="space-y-2">
-                  <h4 className="font-medium">Next achievements to unlock:</h4>
-                  <ul className="space-y-2">
-                    {achievements
-                      .filter((a) => !a.unlocked)
-                      .map((achievement, index) => (
-                        <li key={index} className="flex items-center text-sm">
-                          <div className="h-6 w-6 rounded-full bg-gray-200 flex items-center justify-center mr-2">
-                            <Award className="h-3 w-3 text-gray-500" />
+                {achievements.map((achievement, index) => (
+                  <div
+                    key={index}
+                    className={`border rounded-lg overflow-hidden transition-all duration-200 ${
+                      achievement.unlocked
+                        ? expandedAchievement === achievement.title
+                          ? "bg-primary/5"
+                          : "bg-background"
+                        : "bg-gray-100 dark:bg-gray-800/60"
+                    }`}
+                  >
+                    <div
+                      className="p-4 cursor-pointer flex items-center justify-between"
+                      onClick={() => achievement.unlocked && handleExpandAchievement(achievement.title)}
+                    >
+                      <div className="flex items-center">
+                        <div
+                          className={`h-10 w-10 rounded-full flex items-center justify-center mr-3 ${
+                            achievement.unlocked
+                              ? "bg-amber-100 dark:bg-amber-900/50"
+                              : "bg-gray-200 dark:bg-gray-700"
+                          }`}
+                        >
+                          {achievement.unlocked ? (
+                            <Award
+                              className={`h-5 w-5 ${
+                                achievement.unlocked
+                                  ? "text-amber-500 dark:text-amber-400"
+                                  : "text-gray-400 dark:text-gray-500"
+                              }`}
+                            />
+                          ) : (
+                            <Lock className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                          )}
+                        </div>
+                        <div>
+                          <p
+                            className={`font-medium ${
+                              achievement.unlocked
+                                ? ""
+                                : "text-gray-500 dark:text-gray-400"
+                            }`}
+                          >
+                            {achievement.title}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {achievement.description}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge
+                        variant={achievement.unlocked ? "default" : "outline"}
+                        className={
+                          achievement.unlocked ? "" : "border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-300 dark:bg-gray-800"
+                        }
+                      >
+                        {achievement.unlocked ? "Unlocked" : "Locked"}
+                      </Badge>
+                    </div>
+                    {expandedAchievement === achievement.title && achievement.unlocked && (
+                      <div className="bg-muted p-4 border-t">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium">Achievement Details</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Unlocked on: June 15, 2023
+                            </p>
                           </div>
-                          {achievement.title} - {achievement.description}
-                        </li>
-                      ))}
-                  </ul>
-                </div>
+                          <Button variant="outline" size="sm">
+                            Share
+                          </Button>
+                        </div>
+                        <Separator className="my-3" />
+                        <div className="text-sm">
+                          <p>
+                            {index === 0 
+                              ? "You completed all Math modules with amazing accuracy. Your dedication to mastering mathematical concepts is commendable!" 
+                              : "You've solved a total of 100 physics problems across various difficulty levels. Keep up the great work!"}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
