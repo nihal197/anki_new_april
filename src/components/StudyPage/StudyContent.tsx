@@ -16,81 +16,136 @@ import {
   Zap,
   ChevronRight,
   BarChart2,
+  Loader2,
 } from "lucide-react";
-
+import { useToast } from "@/components/ui/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { subjectsService } from "@/services/SubjectsService";
+import { progressService } from "@/services/ProgressService";
+import { useAuth } from "@/components/AuthProvider";
 
 interface Topic {
-  id: number;
+  id: string;
   title: string;
-  completed: boolean;
   content?: string;
+  completed: boolean;
+  order_index: number;
 }
 
 interface SubjectData {
-  id: number;
+  id: string;
   name: string;
+  description?: string;
   topics: Topic[];
 }
 
-interface StudyContentProps {
-  subject?: string;
-  level?: "Beginner" | "Intermediate" | "Advanced";
-  progress?: number;
-  streakCount?: number;
-  pointsEarned?: number;
-}
+interface StudyContentProps {}
 
-const StudyContent: React.FC<StudyContentProps> = ({
-  subject = "Mathematics",
-  level = "Intermediate",
-  progress = 65,
-  streakCount = 7,
-  pointsEarned = 450,
-}) => {
+const StudyContent: React.FC<StudyContentProps> = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("learn");
-  const [selectedSubject, setSelectedSubject] = useState<string>("Mathematics");
+  const [selectedSubject, setSelectedSubject] = useState<string>("");
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [studyTime, setStudyTime] = useState<number>(0);
   const [timeSpent, setTimeSpent] = useState<{ [key: string]: number }>({});
+  const [subjects, setSubjects] = useState<SubjectData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [level, setLevel] = useState<string>("Beginner");
+  const [streakCount, setStreakCount] = useState<number>(0);
+  const [pointsEarned, setPointsEarned] = useState<number>(0);
 
-  // Mock data for available subjects
-  const subjects: SubjectData[] = [
-    {
-      id: 1,
-      name: "Mathematics",
-      topics: [
-        { id: 1, title: "Algebra Fundamentals", completed: true },
-        { id: 2, title: "Linear Equations", completed: true },
-        { id: 3, title: "Quadratic Equations", completed: false, 
-          content: "A quadratic equation is a second-degree polynomial equation in a single variable x: ax² + bx + c = 0 where a ≠ 0 and a, b, and c are constants." },
-        { id: 4, title: "Polynomials", completed: false },
-        { id: 5, title: "Factorization", completed: false },
-      ]
-    },
-    {
-      id: 2,
-      name: "Physics",
-      topics: [
-        { id: 1, title: "Mechanics", completed: true },
-        { id: 2, title: "Thermodynamics", completed: false },
-        { id: 3, title: "Electromagnetism", completed: false },
-        { id: 4, title: "Optics", completed: false },
-      ]
-    },
-    {
-      id: 3,
-      name: "Chemistry",
-      topics: [
-        { id: 1, title: "Periodic Table", completed: true },
-        { id: 2, title: "Chemical Bonding", completed: false },
-        { id: 3, title: "Organic Chemistry", completed: false },
-      ]
-    }
-  ];
+  // Load subjects and topics from Supabase
+  useEffect(() => {
+    const loadSubjects = async () => {
+      try {
+        setLoading(true);
+        const subjectsData = await subjectsService.getAll();
+        
+        const formattedSubjects: SubjectData[] = [];
+        
+        for (const subject of subjectsData) {
+          const subjectWithTopics = await subjectsService.getById(subject.id);
+          
+          // Get user progress for topics if user is logged in
+          let topicsWithProgress = subjectWithTopics.topics;
+          
+          if (user) {
+            // For each topic, check if it's completed by the user
+            const topicsWithCompletionStatus = await Promise.all(
+              topicsWithProgress.map(async (topic) => {
+                const progress = await progressService.getProgressByUserAndTopic(user.id, topic.id);
+                return {
+                  ...topic,
+                  completed: progress ? progress.completion_percentage === 100 : false,
+                };
+              })
+            );
+            
+            topicsWithProgress = topicsWithCompletionStatus;
+          }
+          
+          formattedSubjects.push({
+            id: subject.id,
+            name: subject.name,
+            description: subject.description || undefined,
+            topics: topicsWithProgress
+              .sort((a, b) => a.order_index - b.order_index)
+              .map(topic => ({
+                id: topic.id,
+                title: topic.title,
+                content: topic.content || undefined,
+                completed: 'completed' in topic ? Boolean(topic.completed) : false,
+                order_index: topic.order_index
+              }))
+          });
+        }
+        
+        setSubjects(formattedSubjects);
+        
+        if (formattedSubjects.length > 0) {
+          setSelectedSubject(formattedSubjects[0].id);
+        }
+        
+        // Calculate some analytics for the UI
+        if (user) {
+          try {
+            const analytics = await progressService.getUserAnalytics(user.id);
+            
+            // Set streak and points (placeholder logic)
+            setStreakCount(analytics.completedTopics > 5 ? 5 : analytics.completedTopics);
+            setPointsEarned(analytics.correctResponses * 10);
+            
+            // Set level based on progress
+            if (analytics.completedTopics > 10) {
+              setLevel("Advanced");
+            } else if (analytics.completedTopics > 5) {
+              setLevel("Intermediate");
+            } else {
+              setLevel("Beginner");
+            }
+          } catch (error) {
+            console.error("Error loading analytics:", error);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading subjects:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load subjects. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSubjects();
+  }, [user, toast]);
 
   // Find the current subject topics
-  const currentSubjectTopics = subjects.find(s => s.name === selectedSubject)?.topics || [];
+  const currentSubject = subjects.find(s => s.id === selectedSubject);
+  const currentSubjectTopics = currentSubject?.topics || [];
 
   // Initialize selected topic if not set
   useEffect(() => {
@@ -99,22 +154,47 @@ const StudyContent: React.FC<StudyContentProps> = ({
     }
   }, [selectedSubject, currentSubjectTopics]);
 
-  // Track study time
+  // Track study time and save progress
   useEffect(() => {
     let timer: NodeJS.Timeout;
     
-    if (selectedTopic) {
+    if (user && selectedTopic) {
       timer = setInterval(() => {
         setStudyTime(prev => prev + 1);
         setTimeSpent(prev => ({
           ...prev,
-          [selectedTopic.id.toString()]: (prev[selectedTopic.id.toString()] || 0) + 1
+          [selectedTopic.id]: (prev[selectedTopic.id] || 0) + 1
         }));
+
+        // Save progress every minute
+        if (studyTime > 0 && studyTime % 60 === 0) {
+          saveProgress();
+        }
       }, 1000);
     }
     
-    return () => clearInterval(timer);
-  }, [selectedTopic]);
+    return () => {
+      clearInterval(timer);
+      if (user && selectedTopic && studyTime > 0) {
+        saveProgress();
+      }
+    };
+  }, [user, selectedTopic, studyTime]);
+
+  const saveProgress = async () => {
+    if (!user || !selectedTopic) return;
+    
+    try {
+      await progressService.updateProgress(
+        user.id, 
+        selectedTopic.id, 
+        selectedTopic.completed ? 100 : 50, 
+        timeSpent[selectedTopic.id] || 0
+      );
+    } catch (error) {
+      console.error("Error saving progress:", error);
+    }
+  };
 
   // Format time to minutes:seconds
   const formatTime = (seconds: number) => {
@@ -125,6 +205,8 @@ const StudyContent: React.FC<StudyContentProps> = ({
 
   const handleTopicSelect = (topic: Topic) => {
     setSelectedTopic(topic);
+    // Reset study time for the new topic
+    setStudyTime(0);
   };
 
   const handleSubjectChange = (value: string) => {
@@ -132,21 +214,75 @@ const StudyContent: React.FC<StudyContentProps> = ({
     setSelectedTopic(null); // Reset selected topic when changing subject
   };
 
-  const handleCompleteSection = () => {
+  const handleCompleteSection = async () => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to track your progress.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (selectedTopic) {
-      // Mark current topic as completed and move to the next one
-      const updatedTopics = currentSubjectTopics.map(topic => 
-        topic.id === selectedTopic.id ? { ...topic, completed: true } : topic
-      );
-      
-      // Find the next incomplete topic
-      const nextTopic = updatedTopics.find(t => !t.completed);
-      if (nextTopic) {
-        setSelectedTopic(nextTopic);
+      try {
+        // Mark current topic as completed in state
+        const updatedSubjects = subjects.map(subject => {
+          if (subject.id === selectedSubject) {
+            return {
+              ...subject,
+              topics: subject.topics.map(topic => 
+                topic.id === selectedTopic.id ? { ...topic, completed: true } : topic
+              )
+            };
+          }
+          return subject;
+        });
+        
+        setSubjects(updatedSubjects);
+        
+        // Update the selected topic
+        setSelectedTopic({ ...selectedTopic, completed: true });
+        
+        // Save progress to Supabase
+        await progressService.updateProgress(
+          user.id,
+          selectedTopic.id,
+          100, // 100% completion
+          timeSpent[selectedTopic.id] || 0
+        );
+        
+        toast({
+          title: "Topic Completed!",
+          description: "Your progress has been saved.",
+        });
+        
+        // Find the next incomplete topic
+        const currentTopics = currentSubjectTopics;
+        const currentIndex = currentTopics.findIndex(t => t.id === selectedTopic.id);
+        const nextTopic = currentTopics[currentIndex + 1];
+        
+        if (nextTopic) {
+          setSelectedTopic(nextTopic);
+          setStudyTime(0);
+        }
+      } catch (error) {
+        console.error("Error completing topic:", error);
+        toast({
+          title: "Error",
+          description: "Failed to save your progress. Please try again.",
+          variant: "destructive",
+        });
       }
     }
   };
 
+  // Calculate completion percentage for current subject
+  const completionPercentage = currentSubjectTopics.length > 0
+    ? Math.round((currentSubjectTopics.filter(t => t.completed).length / currentSubjectTopics.length) * 100)
+    : 0;
+
+  // Add the quizQuestions array back (to be used in the quiz tab)
   const quizQuestions = [
     {
       id: 1,
@@ -162,10 +298,14 @@ const StudyContent: React.FC<StudyContentProps> = ({
     },
   ];
 
-  // Calculate completion percentage for current subject
-  const completionPercentage = currentSubjectTopics.length > 0
-    ? Math.round((currentSubjectTopics.filter(t => t.completed).length / currentSubjectTopics.length) * 100)
-    : 0;
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-[600px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading study content...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col md:flex-row gap-6 w-full min-h-[600px] bg-background">
@@ -181,7 +321,7 @@ const StudyContent: React.FC<StudyContentProps> = ({
                   </SelectTrigger>
                   <SelectContent>
                     {subjects.map(subject => (
-                      <SelectItem key={subject.id} value={subject.name}>
+                      <SelectItem key={subject.id} value={subject.id}>
                         {subject.name}
                       </SelectItem>
                     ))}

@@ -926,4 +926,925 @@ test('user can log in', async ({ page }) => {
 - Set up CI/CD pipeline
 - Prepare production environment
 - Create user documentation
-- Implement monitoring and analytics 
+- Implement monitoring and analytics
+
+## 8. Optimizations and Advanced Features
+
+### Backend Optimizations
+
+1. **Database Indexes for Performance**
+   ```sql
+   -- Add indexes for frequently queried fields
+   CREATE INDEX idx_user_responses_user_id ON user_responses(user_id);
+   CREATE INDEX idx_user_responses_question_id ON user_responses(question_id);
+   CREATE INDEX idx_user_progress_user_id_topic_id ON user_progress(user_id, topic_id);
+   CREATE INDEX idx_questions_subject_topic ON questions(subject_id, topic_id);
+   CREATE INDEX idx_flashcards_subject_topic ON flashcards(subject_id, topic_id);
+   ```
+
+2. **Edge Functions for Low-Latency Operations**
+   ```typescript
+   // supabase/functions/record-response/index.ts
+   import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+   import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+   const corsHeaders = {
+     'Access-Control-Allow-Origin': '*',
+     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+   }
+
+   serve(async (req) => {
+     if (req.method === 'OPTIONS') {
+       return new Response('ok', { headers: corsHeaders })
+     }
+
+     try {
+       const { questionId, response, isCorrect, timeTaken } = await req.json()
+       const supabaseClient = createClient(
+         Deno.env.get('SUPABASE_URL') ?? '',
+         Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+         { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+       )
+       
+       const { data: { user } } = await supabaseClient.auth.getUser()
+       
+       if (!user) {
+         return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+           status: 401,
+         })
+       }
+       
+       const { error } = await supabaseClient
+         .from('user_responses')
+         .insert({
+           user_id: user.id,
+           question_id: questionId,
+           response,
+           is_correct: isCorrect,
+           time_taken: timeTaken
+         })
+       
+       if (error) throw error
+       
+       return new Response(JSON.stringify({ success: true }), {
+         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+         status: 200,
+       })
+     } catch (error) {
+       return new Response(JSON.stringify({ error: error.message }), {
+         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+         status: 400,
+       })
+     }
+   })
+   ```
+
+3. **Redis Caching Layer for Frequently Accessed Data**
+   ```typescript
+   // src/services/CacheService.ts
+   import { createClient } from 'redis';
+
+   class CacheService {
+     private client;
+     private isConnected = false;
+     private readonly TTL = 60 * 60; // 1 hour
+
+     constructor() {
+       this.client = createClient({
+         url: import.meta.env.VITE_REDIS_URL
+       });
+       
+       this.client.on('error', (err) => console.error('Redis Client Error', err));
+       this.connect();
+     }
+
+     private async connect() {
+       if (!this.isConnected) {
+         await this.client.connect();
+         this.isConnected = true;
+       }
+     }
+
+     async get<T>(key: string): Promise<T | null> {
+       try {
+         const value = await this.client.get(key);
+         return value ? JSON.parse(value) : null;
+       } catch (error) {
+         console.error('Cache get error:', error);
+         return null;
+       }
+     }
+
+     async set<T>(key: string, value: T, ttl = this.TTL): Promise<void> {
+       try {
+         await this.client.set(key, JSON.stringify(value), { EX: ttl });
+       } catch (error) {
+         console.error('Cache set error:', error);
+       }
+     }
+
+     async invalidate(key: string): Promise<void> {
+       try {
+         await this.client.del(key);
+       } catch (error) {
+         console.error('Cache invalidate error:', error);
+       }
+     }
+   }
+
+   export const cacheService = new CacheService();
+   ```
+
+### Frontend Performance Enhancements
+
+1. **Request Batching and Fetch Optimization**
+   ```typescript
+   // src/services/SubjectsService.ts (optimized version)
+   import { BaseService } from './BaseService';
+   import { cacheService } from './CacheService';
+   import type { Database } from '@/types/supabase';
+
+   type Subject = Database['public']['Tables']['subjects']['Row'];
+
+   export class SubjectsService extends BaseService {
+     async getAll() {
+       // Try to get from cache first
+       const cacheKey = 'subjects:all';
+       const cachedData = await cacheService.get<Subject[]>(cacheKey);
+       
+       if (cachedData) {
+         return cachedData;
+       }
+       
+       const { data, error } = await this.supabase
+         .from('subjects')
+         .select('*')
+         .order('name');
+       
+       if (error) throw error;
+       
+       // Cache the result
+       if (data) {
+         await cacheService.set(cacheKey, data);
+       }
+       
+       return data;
+     }
+
+     async getByIdWithTopics(id: string) {
+       const cacheKey = `subjects:${id}:topics`;
+       const cachedData = await cacheService.get(cacheKey);
+       
+       if (cachedData) {
+         return cachedData;
+       }
+       
+       const { data, error } = await this.supabase
+         .from('subjects')
+         .select(`
+           *,
+           topics (*)
+         `)
+         .eq('id', id)
+         .single();
+       
+       if (error) throw error;
+       
+       if (data) {
+         await cacheService.set(cacheKey, data);
+       }
+       
+       return data;
+     }
+     
+     // Get multiple subjects with topics in a single request
+     async getBatchWithTopics(ids: string[]) {
+       if (ids.length === 0) return [];
+       
+       const { data, error } = await this.supabase
+         .from('subjects')
+         .select(`
+           *,
+           topics (*)
+         `)
+         .in('id', ids);
+       
+       if (error) throw error;
+       return data || [];
+     }
+   }
+
+   export const subjectsService = new SubjectsService();
+   ```
+
+2. **Virtualized Lists for Large Data Sets**
+   ```tsx
+   // src/components/QuestionsList.tsx
+   import React from 'react';
+   import { FixedSizeList as List } from 'react-window';
+   import AutoSizer from 'react-virtualized-auto-sizer';
+   
+   interface QuestionsListProps {
+     questions: Question[];
+     onSelectQuestion: (question: Question) => void;
+   }
+   
+   const QuestionsList: React.FC<QuestionsListProps> = ({ questions, onSelectQuestion }) => {
+     const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
+       const question = questions[index];
+       
+       return (
+         <div 
+           style={style} 
+           className="p-3 border-b hover:bg-accent cursor-pointer"
+           onClick={() => onSelectQuestion(question)}
+         >
+           <p className="font-medium truncate">{question.question}</p>
+           <div className="flex items-center mt-1 text-xs text-muted-foreground">
+             <span className="capitalize">{question.difficulty}</span>
+             <span className="mx-1">•</span>
+             <span>ID: {question.id.substring(0, 8)}</span>
+           </div>
+         </div>
+       );
+     };
+     
+     return (
+       <div className="h-[500px] w-full border rounded-md">
+         <AutoSizer>
+           {({ height, width }) => (
+             <List
+               height={height}
+               width={width}
+               itemCount={questions.length}
+               itemSize={70}
+             >
+               {Row}
+             </List>
+           )}
+         </AutoSizer>
+       </div>
+     );
+   };
+   
+   export default QuestionsList;
+   ```
+
+3. **Memoization for Expensive Calculations**
+   ```tsx
+   // src/components/PerformanceMetrics.tsx (example of optimization)
+   import React, { useMemo } from 'react';
+   
+   interface PerformanceMetricsProps {
+     responses: UserResponse[];
+   }
+   
+   const PerformanceMetrics: React.FC<PerformanceMetricsProps> = ({ responses }) => {
+     // Memoize expensive calculations
+     const metrics = useMemo(() => {
+       if (!responses.length) {
+         return {
+           accuracy: 0,
+           averageTime: 0,
+           totalQuestions: 0,
+           strengths: [],
+           weaknesses: []
+         };
+       }
+       
+       const correctResponses = responses.filter(r => r.is_correct);
+       const accuracy = (correctResponses.length / responses.length) * 100;
+       const averageTime = responses.reduce((sum, r) => sum + r.time_taken, 0) / responses.length;
+       
+       // Calculate strengths and weaknesses by topic
+       const topicPerformance = responses.reduce((acc, response) => {
+         const topicId = response.question?.topic_id;
+         if (!topicId) return acc;
+         
+         if (!acc[topicId]) {
+           acc[topicId] = {
+             total: 0,
+             correct: 0,
+             topic: response.question?.topic?.title || 'Unknown Topic'
+           };
+         }
+         
+         acc[topicId].total += 1;
+         if (response.is_correct) {
+           acc[topicId].correct += 1;
+         }
+         
+         return acc;
+       }, {});
+       
+       const topicPerformanceArray = Object.values(topicPerformance)
+         .map(tp => ({
+           ...tp,
+           accuracy: (tp.correct / tp.total) * 100
+         }))
+         .sort((a, b) => b.accuracy - a.accuracy);
+       
+       const strengths = topicPerformanceArray
+         .filter(tp => tp.accuracy >= 70 && tp.total >= 5)
+         .slice(0, 3)
+         .map(tp => tp.topic);
+       
+       const weaknesses = topicPerformanceArray
+         .filter(tp => tp.accuracy < 50 && tp.total >= 3)
+         .slice(0, 3)
+         .map(tp => tp.topic);
+       
+       return {
+         accuracy,
+         averageTime,
+         totalQuestions: responses.length,
+         strengths,
+         weaknesses
+       };
+     }, [responses]);
+     
+     return (
+       <div className="space-y-4">
+         <div className="grid grid-cols-3 gap-4">
+           <MetricCard title="Accuracy" value={`${metrics.accuracy.toFixed(1)}%`} />
+           <MetricCard title="Avg. Time" value={`${metrics.averageTime.toFixed(1)}s`} />
+           <MetricCard title="Questions" value={metrics.totalQuestions.toString()} />
+         </div>
+         
+         {/* Rest of the component */}
+       </div>
+     );
+   };
+   ```
+
+### Offline Support and Data Persistence
+
+1. **IndexedDB Integration for Offline Functionality**
+   ```typescript
+   // src/services/OfflineStorage.ts
+   import { openDB, DBSchema, IDBPDatabase } from 'idb';
+
+   interface AnkiFlowDB extends DBSchema {
+     questions: {
+       key: string;
+       value: {
+         id: string;
+         question: string;
+         options: string[];
+         correctAnswer: string;
+         explanation: string;
+         difficulty: string;
+         subjectId: string;
+         topicId: string;
+       };
+       indexes: { 'by-subject-topic': [string, string] };
+     };
+     responses: {
+       key: string;
+       value: {
+         id?: string;
+         questionId: string;
+         response: string;
+         isCorrect: boolean;
+         timeTaken: number;
+         createdAt: number;
+         synced: boolean;
+       };
+       indexes: { 'by-synced': boolean };
+     };
+     progress: {
+       key: string; // topicId
+       value: {
+         topicId: string;
+         completionPercentage: number;
+         timeSpent: number;
+         lastStudied: number;
+         synced: boolean;
+       };
+     };
+   }
+
+   class OfflineStorageService {
+     private db: Promise<IDBPDatabase<AnkiFlowDB>>;
+
+     constructor() {
+       this.db = this.initDB();
+     }
+
+     private initDB() {
+       return openDB<AnkiFlowDB>('ankiflow-offline', 1, {
+         upgrade(db) {
+           // Questions store
+           const questionsStore = db.createObjectStore('questions', { keyPath: 'id' });
+           questionsStore.createIndex('by-subject-topic', ['subjectId', 'topicId']);
+
+           // Responses store
+           const responsesStore = db.createObjectStore('responses', { 
+             keyPath: 'id', 
+             autoIncrement: true 
+           });
+           responsesStore.createIndex('by-synced', 'synced');
+
+           // Progress store
+           db.createObjectStore('progress', { keyPath: 'topicId' });
+         }
+       });
+     }
+
+     // Cache questions for offline use
+     async cacheQuestions(questions: any[]) {
+       const db = await this.db;
+       const tx = db.transaction('questions', 'readwrite');
+       
+       for (const question of questions) {
+         await tx.store.put({
+           id: question.id,
+           question: question.question,
+           options: question.options,
+           correctAnswer: question.correct_answer,
+           explanation: question.explanation,
+           difficulty: question.difficulty,
+           subjectId: question.subject_id,
+           topicId: question.topic_id
+         });
+       }
+       
+       await tx.done;
+     }
+
+     // Get questions by subject and topic
+     async getQuestions(subjectId: string, topicId?: string) {
+       const db = await this.db;
+       
+       if (topicId) {
+         return db.getAllFromIndex('questions', 'by-subject-topic', [subjectId, topicId]);
+       } else {
+         // Get all questions for the subject
+         const index = db.transaction('questions').store.index('by-subject-topic');
+         const keys = await index.getAllKeys();
+         const subjectQuestions = keys.filter(key => Array.isArray(key) && key[0] === subjectId);
+         
+         return Promise.all(
+           subjectQuestions.map(key => db.get('questions', key[1]))
+         );
+       }
+     }
+
+     // Store response when offline
+     async saveResponse(response: Omit<AnkiFlowDB['responses']['value'], 'id' | 'synced'>) {
+       const db = await this.db;
+       
+       await db.add('responses', {
+         ...response,
+         createdAt: Date.now(),
+         synced: false
+       });
+     }
+
+     // Get unsynced responses to sync when online
+     async getUnsyncedResponses() {
+       const db = await this.db;
+       return db.getAllFromIndex('responses', 'by-synced', false);
+     }
+
+     // Mark responses as synced
+     async markResponsesAsSynced(ids: string[]) {
+       const db = await this.db;
+       const tx = db.transaction('responses', 'readwrite');
+       
+       for (const id of ids) {
+         const response = await tx.store.get(id);
+         if (response) {
+           response.synced = true;
+           await tx.store.put(response);
+         }
+       }
+       
+       await tx.done;
+     }
+
+     // Save progress locally
+     async saveProgress(progress: Omit<AnkiFlowDB['progress']['value'], 'synced'>) {
+       const db = await this.db;
+       
+       // Check if progress exists
+       const existingProgress = await db.get('progress', progress.topicId);
+       
+       if (existingProgress) {
+         await db.put('progress', {
+           ...existingProgress,
+           completionPercentage: progress.completionPercentage,
+           timeSpent: existingProgress.timeSpent + progress.timeSpent,
+           lastStudied: Date.now(),
+           synced: false
+         });
+       } else {
+         await db.add('progress', {
+           ...progress,
+           lastStudied: Date.now(),
+           synced: false
+         });
+       }
+     }
+
+     // Get unsynced progress
+     async getUnsyncedProgress() {
+       const db = await this.db;
+       const tx = db.transaction('progress');
+       const all = await tx.store.getAll();
+       
+       return all.filter(item => !item.synced);
+     }
+   }
+
+   export const offlineStorage = new OfflineStorageService();
+   ```
+
+2. **Service Worker for PWA Capabilities**
+   ```typescript
+   // public/service-worker.js
+   const CACHE_NAME = 'ankiflow-cache-v1';
+   const urlsToCache = [
+     '/',
+     '/index.html',
+     '/assets/index.css',
+     '/assets/index.js',
+   ];
+
+   self.addEventListener('install', (event) => {
+     event.waitUntil(
+       caches.open(CACHE_NAME)
+         .then((cache) => {
+           return cache.addAll(urlsToCache);
+         })
+     );
+   });
+
+   self.addEventListener('fetch', (event) => {
+     event.respondWith(
+       caches.match(event.request)
+         .then((response) => {
+           // Cache hit - return response
+           if (response) {
+             return response;
+           }
+           
+           return fetch(event.request).then(
+             (response) => {
+               // Check if we received a valid response
+               if(!response || response.status !== 200 || response.type !== 'basic') {
+                 return response;
+               }
+
+               // Clone the response
+               const responseToCache = response.clone();
+
+               caches.open(CACHE_NAME)
+                 .then((cache) => {
+                   // Don't cache API requests
+                   if (!event.request.url.includes('/api/') && 
+                       !event.request.url.includes('.supabase.co')) {
+                     cache.put(event.request, responseToCache);
+                   }
+                 });
+
+               return response;
+             }
+           );
+         })
+     );
+   });
+
+   // Clear old caches when a new version is available
+   self.addEventListener('activate', (event) => {
+     const cacheWhitelist = [CACHE_NAME];
+     
+     event.waitUntil(
+       caches.keys().then((cacheNames) => {
+         return Promise.all(
+           cacheNames.map((cacheName) => {
+             if (cacheWhitelist.indexOf(cacheName) === -1) {
+               return caches.delete(cacheName);
+             }
+           })
+         );
+       })
+     );
+   });
+   ```
+
+### Advanced Learning Features
+
+1. **Spaced Repetition Algorithm Implementation**
+   ```typescript
+   // src/lib/spaced-repetition.ts
+   
+   interface Card {
+     id: string;
+     interval?: number; // in days
+     repetitions?: number;
+     easeFactor?: number;
+     dueDate?: Date;
+   }
+   
+   // Performance rating: 0-5 scale where:
+   // 0-2: Failed recall (reset)
+   // 3: Difficult recall
+   // 4: Correct recall with hesitation
+   // 5: Perfect recall
+   
+   export function calculateNextReview(card: Card, performanceRating: number): Card {
+     // Default values for new cards
+     const interval = card.interval || 0;
+     const repetitions = card.repetitions || 0;
+     const easeFactor = card.easeFactor || 2.5;
+     
+     let newInterval: number;
+     let newRepetitions: number;
+     let newEaseFactor: number;
+     
+     // Handle failed recall
+     if (performanceRating < 3) {
+       newInterval = 1;
+       newRepetitions = 0;
+       newEaseFactor = Math.max(1.3, easeFactor - 0.2);
+     } else {
+       // Handle successful recall
+       newRepetitions = repetitions + 1;
+       newEaseFactor = easeFactor + (0.1 - (5 - performanceRating) * (0.08 + (5 - performanceRating) * 0.02));
+       
+       // Ensure ease factor doesn't go below 1.3
+       newEaseFactor = Math.max(1.3, newEaseFactor);
+       
+       if (newRepetitions === 1) {
+         newInterval = 1;
+       } else if (newRepetitions === 2) {
+         newInterval = 6;
+       } else {
+         newInterval = Math.round(interval * newEaseFactor);
+       }
+     }
+     
+     // Calculate due date
+     const now = new Date();
+     const dueDate = new Date();
+     dueDate.setDate(now.getDate() + newInterval);
+     
+     return {
+       ...card,
+       interval: newInterval,
+       repetitions: newRepetitions,
+       easeFactor: newEaseFactor,
+       dueDate
+     };
+   }
+   
+   export function getDueCards(cards: Card[]): Card[] {
+     const now = new Date();
+     return cards.filter(card => {
+       if (!card.dueDate) return true; // New cards are always due
+       return card.dueDate <= now;
+     });
+   }
+   ```
+
+2. **Real-time Collaboration with Supabase Realtime**
+   ```typescript
+   // src/lib/realtime.ts
+   import { supabase } from './supabase';
+   
+   export function subscribeToStudyGroup(groupId: string, callback: (payload: any) => void) {
+     const channel = supabase
+       .channel(`study_group:${groupId}`)
+       .on(
+         'postgres_changes',
+         {
+           event: '*',
+           schema: 'public',
+           table: 'study_group_messages',
+           filter: `group_id=eq.${groupId}`
+         },
+         (payload) => {
+           callback(payload);
+         }
+       )
+       .subscribe();
+       
+     return () => {
+       supabase.removeChannel(channel);
+     };
+   }
+   
+   export async function sendStudyGroupMessage(groupId: string, userId: string, message: string) {
+     const { data, error } = await supabase
+       .from('study_group_messages')
+       .insert({
+         group_id: groupId,
+         user_id: userId,
+         message,
+         created_at: new Date().toISOString()
+       });
+       
+     if (error) throw error;
+     return data;
+   }
+   ```
+
+### Security Enhancements
+
+1. **Rate Limiting Implementation**
+   ```typescript
+   // supabase/functions/rate-limiter/index.ts
+   import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+   import { Redis } from 'https://deno.land/x/redis@v0.29.0/mod.ts'
+   
+   const redis = await Redis.connect({
+     hostname: Deno.env.get('REDIS_HOST') || '',
+     port: parseInt(Deno.env.get('REDIS_PORT') || '6379'),
+     password: Deno.env.get('REDIS_PASSWORD'),
+   })
+   
+   // Rate limiting middleware
+   async function rateLimit(ip: string, limit = 60, window = 60) {
+     const key = `rate:${ip}`
+     
+     // Get current count
+     const current = await redis.get(key)
+     const count = current ? parseInt(current) : 0
+     
+     if (count >= limit) {
+       return false
+     }
+     
+     // If first request, set expiry
+     if (count === 0) {
+       await redis.setex(key, window, '1')
+     } else {
+       await redis.incr(key)
+     }
+     
+     return true
+   }
+   
+   serve(async (req) => {
+     const ip = req.headers.get('x-forwarded-for') || 'unknown'
+     
+     // Check rate limit
+     const allowed = await rateLimit(ip)
+     
+     if (!allowed) {
+       return new Response(JSON.stringify({ error: 'Too many requests' }), {
+         status: 429,
+         headers: { 'Content-Type': 'application/json' }
+       })
+     }
+     
+     // Continue with the actual request processing
+     return new Response(JSON.stringify({ message: 'Success' }), {
+       headers: { 'Content-Type': 'application/json' }
+     })
+   })
+   ```
+
+2. **Content Security Policy Setup**
+   ```html
+   <!-- Add to index.html -->
+   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co;">
+   ```
+
+### Analytics and Monitoring
+
+1. **Error Tracking with Sentry**
+   ```typescript
+   // src/main.tsx
+   import React from 'react';
+   import ReactDOM from 'react-dom/client';
+   import { BrowserRouter } from 'react-router-dom';
+   import * as Sentry from '@sentry/react';
+   import App from './App';
+   import './index.css';
+   
+   if (import.meta.env.PROD) {
+     Sentry.init({
+       dsn: import.meta.env.VITE_SENTRY_DSN,
+       integrations: [
+         new Sentry.BrowserTracing({
+           routingInstrumentation: Sentry.reactRouterV6Instrumentation(
+             React.useEffect,
+           ),
+         }),
+         new Sentry.Replay(),
+       ],
+       tracesSampleRate: 0.1,
+       replaysSessionSampleRate: 0.1,
+       replaysOnErrorSampleRate: 1.0,
+     });
+   }
+   
+   ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+     <React.StrictMode>
+       <BrowserRouter>
+         <App />
+       </BrowserRouter>
+     </React.StrictMode>
+   );
+   ```
+
+2. **User Behavior Analytics**
+   ```typescript
+   // src/lib/analytics.ts
+   
+   interface AnalyticsEvent {
+     name: string;
+     properties?: Record<string, any>;
+   }
+   
+   class Analytics {
+     private userId: string | null = null;
+     
+     setUser(id: string) {
+       this.userId = id;
+     }
+     
+     trackEvent(event: AnalyticsEvent) {
+       if (import.meta.env.DEV) {
+         console.log('Analytics event:', event);
+         return;
+       }
+       
+       // Send to backend analytics endpoint
+       fetch('/api/analytics/event', {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+         },
+         body: JSON.stringify({
+           userId: this.userId,
+           eventName: event.name,
+           properties: event.properties,
+           timestamp: new Date().toISOString(),
+         }),
+       }).catch(err => {
+         console.error('Failed to send analytics event:', err);
+       });
+     }
+     
+     trackPageView(path: string) {
+       this.trackEvent({
+         name: 'page_view',
+         properties: { path }
+       });
+     }
+     
+     trackStudySession(subjectId: string, topicId: string, durationSeconds: number) {
+       this.trackEvent({
+         name: 'study_session',
+         properties: {
+           subjectId,
+           topicId,
+           durationSeconds
+         }
+       });
+     }
+     
+     trackQuestionAnswer(questionId: string, isCorrect: boolean, timeSpentSeconds: number) {
+       this.trackEvent({
+         name: 'answer_question',
+         properties: {
+           questionId,
+           isCorrect,
+           timeSpentSeconds
+         }
+       });
+     }
+   }
+   
+   export const analytics = new Analytics();
+   ```
+
+## Updated Implementation Timeline
+
+### Week 1-2: Backend Setup and Core Features
+- Set up all database tables with optimized indexes
+- Implement auth flow and security measures
+- Create core service layer with caching
+- Deploy edge functions
+
+### Week 3-4: Frontend Components and Offline Support
+- Build optimized React components with virtualization
+- Implement offline storage with IndexedDB
+- Add PWA capabilities with service worker
+- Create spaced repetition algorithm
+
+### Week 5-6: Advanced Features and Performance
+- Add real-time collaborative features
+- Implement analytics and monitoring
+- Optimize bundle size and loading performance
+- Set up CI/CD pipeline with monitoring
+
+### Week 7-8: Testing, Optimization and Launch
+- Write end-to-end tests
+- Performance testing and optimization
+- Security auditing
+- Documentation and user guides 

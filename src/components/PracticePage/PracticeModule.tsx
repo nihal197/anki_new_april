@@ -12,110 +12,66 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Check, X, ChevronDown, ChevronUp, RotateCcw, ThumbsUp, ThumbsDown } from "lucide-react";
+import { 
+  Check, 
+  X, 
+  ChevronDown, 
+  ChevronUp, 
+  RotateCcw, 
+  ThumbsUp,
+  ThumbsDown,
+  Loader2 
+} from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
 import confetti from 'canvas-confetti';
+import { useAuth } from "@/components/AuthProvider";
+import { subjectsService } from "@/services/SubjectsService";
+import { questionsService } from "@/services/QuestionsService";
+import { flashcardsService } from "@/services/FlashcardsService";
+import { progressService } from "@/services/ProgressService";
 
 interface Question {
   id: string;
   question: string;
-  options?: string[];
-  correctAnswer: string;
+  options?: Record<string, unknown> | any;
+  correct_answer: string;
   explanation?: string;
-  difficulty: "easy" | "medium" | "hard";
-  subject: string;
-  chapter: string;
+  difficulty: string;
+  subject_id: string;
+  topic_id?: string;
 }
 
 interface Flashcard {
   id: string;
   front: string;
   back: string;
-  subject: string;
-  chapter: string;
+  subject_id: string;
+  topic_id?: string;
 }
 
-// Mock data for questions and flashcards
-const mockQuestions: Question[] = [
-  {
-    id: "1",
-    question: "What is Newton's First Law of Motion?",
-    options: [
-      "An object at rest stays at rest, and an object in motion stays in motion unless acted upon by an external force.",
-      "Force equals mass times acceleration.",
-      "For every action, there is an equal and opposite reaction.",
-      "Energy can neither be created nor destroyed.",
-    ],
-    correctAnswer:
-      "An object at rest stays at rest, and an object in motion stays in motion unless acted upon by an external force.",
-    explanation:
-      "Newton's First Law of Motion, also known as the Law of Inertia, states that an object will remain at rest or in uniform motion in a straight line unless acted upon by an external force.",
-    difficulty: "medium",
-    subject: "physics",
-    chapter: "mechanics",
-  },
-  {
-    id: "2",
-    question: "Which of the following is a quadratic equation?",
-    options: [
-      "y = 2x + 3",
-      "y = x² + 2x + 1",
-      "y = 3/x",
-      "y = 2^x",
-    ],
-    correctAnswer: "y = x² + 2x + 1",
-    explanation: "A quadratic equation contains at least one term with x², making it a second-degree polynomial equation.",
-    difficulty: "easy",
-    subject: "mathematics",
-    chapter: "algebra",
-  },
-  {
-    id: "3",
-    question: "What is the main function of mitochondria in a cell?",
-    options: [
-      "Protein synthesis",
-      "Energy production (ATP)",
-      "Storage of genetic material",
-      "Cell division",
-    ],
-    correctAnswer: "Energy production (ATP)",
-    explanation: "Mitochondria are known as the powerhouse of the cell because they generate most of the cell's supply of ATP, which is used as a source of chemical energy.",
-    difficulty: "medium",
-    subject: "biology",
-    chapter: "human_physiology",
-  }
-];
+interface Subject {
+  id: string;
+  name: string;
+}
 
-const mockFlashcards: Flashcard[] = [
-  {
-    id: "1",
-    front: "What is Newton's First Law of Motion?",
-    back: "An object at rest stays at rest, and an object in motion stays in motion unless acted upon by an external force.",
-    subject: "physics",
-    chapter: "mechanics",
-  },
-  {
-    id: "2",
-    front: "What is a quadratic equation?",
-    back: "A quadratic equation is a second-degree polynomial equation in a single variable x, typically written in the form ax² + bx + c = 0, where a ≠ 0.",
-    subject: "mathematics",
-    chapter: "algebra",
-  },
-  {
-    id: "3",
-    front: "What is the function of mitochondria?",
-    back: "Mitochondria are the powerhouse of the cell, responsible for producing energy (ATP) through cellular respiration.",
-    subject: "biology",
-    chapter: "human_physiology",
-  }
-];
+interface Topic {
+  id: string;
+  title: string;
+  subject_id: string;
+}
 
 const PracticeModule = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
   // State for practice mode (MCQ or Flashcard)
   const [practiceMode, setPracticeMode] = useState<"mcq" | "flashcard">("mcq");
 
   // State for subject and chapter selection
-  const [selectedSubject, setSelectedSubject] = useState<string>("physics");
-  const [selectedChapter, setSelectedChapter] = useState<string>("mechanics");
+  const [selectedSubject, setSelectedSubject] = useState<string>("");
+  const [selectedTopic, setSelectedTopic] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [topics, setTopics] = useState<Record<string, Topic[]>>({});
 
   // State for MCQ mode
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -125,6 +81,7 @@ const PracticeModule = () => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [filteredQuestions, setFilteredQuestions] = useState<Question[]>([]);
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
+  const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now());
 
   // State for Flashcard mode
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
@@ -136,59 +93,113 @@ const PracticeModule = () => {
   const [knownFlashcards, setKnownFlashcards] = useState<Set<string>>(new Set());
   const [unknownFlashcards, setUnknownFlashcards] = useState<Set<string>>(new Set());
 
-  // Mock data for subjects and chapters
-  const subjects = [
-    { value: "physics", label: "Physics" },
-    { value: "chemistry", label: "Chemistry" },
-    { value: "mathematics", label: "Mathematics" },
-    { value: "biology", label: "Biology" },
-  ];
-
-  const chapters = {
-    physics: [
-      { value: "mechanics", label: "Mechanics" },
-      { value: "thermodynamics", label: "Thermodynamics" },
-      { value: "electromagnetism", label: "Electromagnetism" },
-      { value: "optics", label: "Optics" },
-    ],
-    chemistry: [
-      { value: "organic", label: "Organic Chemistry" },
-      { value: "inorganic", label: "Inorganic Chemistry" },
-      { value: "physical", label: "Physical Chemistry" },
-    ],
-    mathematics: [
-      { value: "algebra", label: "Algebra" },
-      { value: "calculus", label: "Calculus" },
-      { value: "trigonometry", label: "Trigonometry" },
-      { value: "statistics", label: "Statistics" },
-    ],
-    biology: [
-      { value: "botany", label: "Botany" },
-      { value: "zoology", label: "Zoology" },
-      { value: "human_physiology", label: "Human Physiology" },
-    ],
-  };
-
-  // Filter questions based on subject and chapter
+  // Load subjects and topics from Supabase
   useEffect(() => {
-    const filtered = mockQuestions.filter(
-      q => q.subject === selectedSubject && q.chapter === selectedChapter
-    );
-    setFilteredQuestions(filtered.length > 0 ? filtered : [mockQuestions[0]]);
-    setCurrentQuestionIndex(0);
-    setSelectedOption(null);
-    setShowAnswer(false);
-  }, [selectedSubject, selectedChapter]);
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        
+        // Load subjects
+        const subjectsData = await subjectsService.getAll();
+        setSubjects(subjectsData);
+        
+        if (subjectsData.length > 0) {
+          const defaultSubject = subjectsData[0].id;
+          setSelectedSubject(defaultSubject);
+          
+          // Load topics for each subject
+          const topicsMap: Record<string, Topic[]> = {};
+          
+          for (const subject of subjectsData) {
+            const subjectWithTopics = await subjectsService.getById(subject.id);
+            topicsMap[subject.id] = subjectWithTopics.topics;
+          }
+          
+          setTopics(topicsMap);
+          
+          // Set default topic if available
+          if (topicsMap[defaultSubject]?.length > 0) {
+            setSelectedTopic(topicsMap[defaultSubject][0].id);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading subjects and topics:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load subjects and topics. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  }, [toast]);
 
-  // Filter flashcards based on subject and chapter
+  // Load questions based on selected subject and topic
   useEffect(() => {
-    const filtered = mockFlashcards.filter(
-      f => f.subject === selectedSubject && f.chapter === selectedChapter
-    );
-    setFilteredFlashcards(filtered.length > 0 ? filtered : [mockFlashcards[0]]);
-    setCurrentCardIndex(0);
-    setIsFlipped(false);
-  }, [selectedSubject, selectedChapter]);
+    const loadQuestions = async () => {
+      if (!selectedSubject || !selectedTopic) return;
+      
+      try {
+        setLoading(true);
+        const questionsData = await questionsService.getBySubjectAndTopic(
+          selectedSubject,
+          selectedTopic
+        );
+        
+        setFilteredQuestions(questionsData);
+        setCurrentQuestionIndex(0);
+        setSelectedOption(null);
+        setShowAnswer(false);
+        setQuestionStartTime(Date.now());
+      } catch (error) {
+        console.error("Error loading questions:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load questions. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadQuestions();
+  }, [selectedSubject, selectedTopic, toast]);
+
+  // Load flashcards based on selected subject and topic
+  useEffect(() => {
+    const loadFlashcards = async () => {
+      if (!selectedSubject || !selectedTopic) return;
+      
+      try {
+        setLoading(true);
+        const flashcardsData = await flashcardsService.getBySubjectAndTopic(
+          selectedSubject,
+          selectedTopic
+        );
+        
+        setFilteredFlashcards(flashcardsData);
+        setCurrentCardIndex(0);
+        setIsFlipped(false);
+      } catch (error) {
+        console.error("Error loading flashcards:", error);
+        toast({
+          title: "Error", 
+          description: "Failed to load flashcards. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    if (practiceMode === "flashcard") {
+      loadFlashcards();
+    }
+  }, [selectedSubject, selectedTopic, practiceMode, toast]);
 
   // Reset when changing practice mode
   useEffect(() => {
@@ -196,6 +207,7 @@ const PracticeModule = () => {
       setCurrentQuestionIndex(0);
       setSelectedOption(null);
       setShowAnswer(false);
+      setQuestionStartTime(Date.now());
     } else {
       setCurrentCardIndex(0);
       setIsFlipped(false);
@@ -203,90 +215,275 @@ const PracticeModule = () => {
     }
   }, [practiceMode]);
 
-  // Trigger confetti effect when user gets correct answer
-  useEffect(() => {
-    if (showConfetti) {
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 }
+  const handleOptionSelect = async (option: string) => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to track your progress.",
+        variant: "destructive",
       });
-      
-      const timeout = setTimeout(() => {
-        setShowConfetti(false);
-      }, 2000);
-      
-      return () => clearTimeout(timeout);
+      return;
     }
-  }, [showConfetti]);
-
-  // Get current question or flashcard
-  const currentQuestion = filteredQuestions[currentQuestionIndex] || mockQuestions[0];
-  const currentFlashcard = filteredFlashcards[currentCardIndex] || mockFlashcards[0];
-
-  // Handler for MCQ option selection
-  const handleOptionSelect = (option: string) => {
+    
+    if (selectedOption !== null || !filteredQuestions.length) return;
+    
     setSelectedOption(option);
     setShowAnswer(true);
     setQuestionsAttempted((prev) => prev + 1);
-
-    if (option === currentQuestion.correctAnswer) {
+    
+    const currentQuestion = filteredQuestions[currentQuestionIndex];
+    const isCorrect = option === currentQuestion.correct_answer;
+    
+    if (isCorrect) {
       setScore((prev) => prev + 1);
       setShowConfetti(true);
-    }
-  };
-
-  // Handler for next question
-  const handleNextQuestion = () => {
-    if (currentQuestionIndex < filteredQuestions.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
-    } else {
-      // If we've gone through all questions, restart from the beginning
-      setCurrentQuestionIndex(0);
+      setTimeout(() => setShowConfetti(false), 2000);
     }
     
-    setSelectedOption(null);
-    setShowAnswer(false);
+    // Calculate time taken to answer
+    const timeTaken = Math.round((Date.now() - questionStartTime) / 1000);
+    
+    try {
+      // Record the response in the database
+      await questionsService.recordResponse(
+        user.id,
+        currentQuestion.id,
+        option,
+        isCorrect,
+        timeTaken
+      );
+    } catch (error) {
+      console.error("Error recording response:", error);
+    }
   };
 
-  // Handler for flashcard flip
+  const handleNextQuestion = () => {
+    if (currentQuestionIndex < filteredQuestions.length - 1) {
+      setCurrentQuestionIndex((prev) => prev + 1);
+      setSelectedOption(null);
+      setShowAnswer(false);
+      setQuestionStartTime(Date.now());
+    } else {
+      // End of questions, record the practice session
+      if (user && selectedSubject && selectedTopic) {
+        try {
+          const sessionDuration = Math.round((Date.now() - questionStartTime) / 1000) + 
+            (questionsAttempted * 30); // Approximate total duration
+          
+          progressService.recordPracticeSession(
+            user.id,
+            selectedSubject,
+            selectedTopic,
+            questionsAttempted,
+            score,
+            sessionDuration
+          );
+          
+          // Show success message
+          toast({
+            title: "Practice Complete!",
+            description: `You scored ${score} out of ${filteredQuestions.length} questions. Points and streak updated!`,
+          });
+        } catch (error) {
+          console.error("Error recording practice session:", error);
+        }
+      } else {
+        // Basic message if user not logged in
+        toast({
+          title: "Practice Complete",
+          description: `You scored ${score} out of ${filteredQuestions.length} questions.`,
+        });
+      }
+      
+      // Reset for a new round
+      setCurrentQuestionIndex(0);
+      setSelectedOption(null);
+      setShowAnswer(false);
+      setScore(0);
+      setQuestionsAttempted(0);
+      setQuestionStartTime(Date.now());
+    }
+  };
+
   const handleFlipCard = () => {
     setIsFlipped(!isFlipped);
   };
 
-  // Handler for flashcard swipe
-  const handleSwipe = (direction: "right" | "left" | "down") => {
+  const handleSwipe = async (direction: "right" | "left" | "down") => {
+    if (!user || !filteredFlashcards.length) return;
+    
+    const currentCard = filteredFlashcards[currentCardIndex];
     setCardDirection(direction);
     
-    // Mark card as known/unknown
+    // Record the response
+    const isCorrect = direction === "right"; // "right" means known/correct
+    const knownSet = new Set(knownFlashcards);
+    const unknownSet = new Set(unknownFlashcards);
+    
     if (direction === "right") {
-      setKnownFlashcards(prev => new Set(prev).add(currentFlashcard.id));
+      knownSet.add(currentCard.id);
+      unknownSet.delete(currentCard.id);
+      setKnownFlashcards(knownSet);
     } else if (direction === "left") {
-      setUnknownFlashcards(prev => new Set(prev).add(currentFlashcard.id));
+      unknownSet.add(currentCard.id);
+      knownSet.delete(currentCard.id);
+      setUnknownFlashcards(unknownSet);
     }
-
-    // After animation completes, move to next card
+    
+    try {
+      // Record the response in the database
+      await flashcardsService.recordResponse(
+        user.id,
+        currentCard.id,
+        direction,
+        isCorrect,
+        0 // We don't track time for flashcards in this implementation
+      );
+    } catch (error) {
+      console.error("Error recording flashcard response:", error);
+    }
+    
+    // Move to next card after a short delay
     setTimeout(() => {
       if (currentCardIndex < filteredFlashcards.length - 1) {
-        setCurrentCardIndex(prev => prev + 1);
+        setCurrentCardIndex((prev) => prev + 1);
       } else {
-        // If we've gone through all cards, restart from the beginning
+        // End of cards, record the practice session
+        if (user && selectedSubject && selectedTopic) {
+          try {
+            const totalAttempted = filteredFlashcards.length;
+            const correctAnswers = knownFlashcards.size;
+            const sessionDuration = Math.round(totalAttempted * 15); // Approximate time spent
+            
+            progressService.recordPracticeSession(
+              user.id,
+              selectedSubject,
+              selectedTopic,
+              totalAttempted,
+              correctAnswers,
+              sessionDuration
+            );
+            
+            // Show success message
+            toast({
+              title: "Flashcard Practice Complete!",
+              description: `You've completed ${totalAttempted} flashcards with ${correctAnswers} marked as known. Points and streak updated!`,
+            });
+          } catch (error) {
+            console.error("Error recording flashcard session:", error);
+          }
+        } else {
+          // Basic message if user not logged in
+          toast({
+            title: "Flashcard Practice Complete",
+            description: `You've reviewed all ${filteredFlashcards.length} flashcards.`,
+          });
+        }
+        
+        // Reset
         setCurrentCardIndex(0);
+        setKnownFlashcards(new Set());
+        setUnknownFlashcards(new Set());
       }
-      
-      setCardDirection("none");
       setIsFlipped(false);
+      setCardDirection("none");
     }, 300);
   };
 
-  // Calculate progress percentages
-  const mcqProgressPercentage = questionsAttempted > 0 
-    ? Math.round((score / questionsAttempted) * 100) 
-    : 0;
-    
-  const flashcardProgressPercentage = filteredFlashcards.length > 0
-    ? Math.round((knownFlashcards.size / filteredFlashcards.length) * 100)
-    : 0;
+  // Get current question or flashcard
+  const currentQuestion = filteredQuestions[currentQuestionIndex];
+  const currentFlashcard = filteredFlashcards[currentCardIndex];
+
+  // Parse options for the current question
+  const options = currentQuestion?.options 
+    ? Array.isArray(currentQuestion.options) 
+      ? currentQuestion.options 
+      : Object.values(currentQuestion.options as Record<string, string>) 
+    : [];
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-[600px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading practice content...</span>
+      </div>
+    );
+  }
+
+  // Check if no content is available
+  const noContent = (practiceMode === "mcq" && filteredQuestions.length === 0) || 
+                    (practiceMode === "flashcard" && filteredFlashcards.length === 0);
+  
+  if (noContent && selectedSubject && selectedTopic) {
+    return (
+      <div className="w-full max-w-6xl mx-auto p-6 bg-white rounded-xl shadow-md">
+        <div className="flex flex-col space-y-6">
+          {/* Header with subject and chapter selection */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+              <Select value={selectedSubject} onValueChange={setSelectedSubject}>
+                <SelectTrigger className="w-full md:w-[180px]">
+                  <SelectValue placeholder="Select Subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  {subjects.map((subject) => (
+                    <SelectItem key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={selectedTopic} onValueChange={setSelectedTopic}>
+                <SelectTrigger className="w-full md:w-[180px]">
+                  <SelectValue placeholder="Select Topic" />
+                </SelectTrigger>
+                <SelectContent>
+                  {topics[selectedSubject]?.map((topic) => (
+                    <SelectItem key={topic.id} value={topic.id}>
+                      {topic.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Practice mode toggle */}
+            <Tabs
+              value={practiceMode}
+              className="w-full md:w-auto"
+              onValueChange={(value) =>
+                setPracticeMode(value as "mcq" | "flashcard")
+              }
+            >
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="mcq">MCQ</TabsTrigger>
+                <TabsTrigger value="flashcard">Flashcards</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+          
+          <div className="flex flex-col items-center justify-center p-8 bg-muted rounded-lg">
+            <h3 className="text-xl font-medium mb-4">
+              No {practiceMode === "mcq" ? "questions" : "flashcards"} available for this topic
+            </h3>
+            <p className="text-muted-foreground mb-6">
+              Please select a different subject or topic to continue practicing.
+            </p>
+            <Button onClick={() => {
+              // Reset selected topic
+              if (subjects.length > 0 && topics[subjects[0].id]?.length > 0) {
+                setSelectedSubject(subjects[0].id);
+                setSelectedTopic(topics[subjects[0].id][0].id);
+              }
+            }}>
+              Try Another Topic
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-6xl mx-auto p-6 bg-white rounded-xl shadow-md">
@@ -300,25 +497,23 @@ const PracticeModule = () => {
               </SelectTrigger>
               <SelectContent>
                 {subjects.map((subject) => (
-                  <SelectItem key={subject.value} value={subject.value}>
-                    {subject.label}
+                  <SelectItem key={subject.id} value={subject.id}>
+                    {subject.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
-            <Select value={selectedChapter} onValueChange={setSelectedChapter}>
+            <Select value={selectedTopic} onValueChange={setSelectedTopic}>
               <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="Select Chapter" />
+                <SelectValue placeholder="Select Topic" />
               </SelectTrigger>
               <SelectContent>
-                {chapters[selectedSubject as keyof typeof chapters]?.map(
-                  (chapter) => (
-                    <SelectItem key={chapter.value} value={chapter.value}>
-                      {chapter.label}
-                    </SelectItem>
-                  ),
-                )}
+                {topics[selectedSubject]?.map((topic) => (
+                  <SelectItem key={topic.id} value={topic.id}>
+                    {topic.title}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -344,12 +539,12 @@ const PracticeModule = () => {
             <span className="text-sm font-medium">Progress</span>
             <span className="text-sm font-medium">
               {practiceMode === "mcq" 
-                ? `${mcqProgressPercentage}% (${score}/${questionsAttempted})` 
-                : `${flashcardProgressPercentage}% (${knownFlashcards.size}/${filteredFlashcards.length})`}
+                ? `${Math.round((score / questionsAttempted) * 100)}% (${score}/${questionsAttempted})` 
+                : `${Math.round((knownFlashcards.size / filteredFlashcards.length) * 100)}% (${knownFlashcards.size}/${filteredFlashcards.length})`}
             </span>
           </div>
           <Progress
-            value={practiceMode === "mcq" ? mcqProgressPercentage : flashcardProgressPercentage}
+            value={practiceMode === "mcq" ? Math.round((score / questionsAttempted) * 100) : Math.round((knownFlashcards.size / filteredFlashcards.length) * 100)}
             className="h-2"
           />
         </div>
@@ -364,10 +559,10 @@ const PracticeModule = () => {
                     variant="outline"
                     className="bg-blue-50 text-blue-700 border-blue-200"
                   >
-                    {subjects.find(s => s.value === currentQuestion.subject)?.label} - 
-                    {chapters[currentQuestion.subject as keyof typeof chapters]?.find(
-                      c => c.value === currentQuestion.chapter
-                    )?.label}
+                    {subjects.find(s => s.id === currentQuestion.subject_id)?.name} - 
+                    {topics[currentQuestion.subject_id]?.find(
+                      t => t.id === currentQuestion.topic_id
+                    )?.title}
                   </Badge>
                   <Badge
                     variant={
@@ -388,40 +583,40 @@ const PracticeModule = () => {
                 </h3>
 
                 <div className="space-y-4">
-                  {currentQuestion.options?.map((option, index) => (
+                  {options.map((option, index) => (
                     <Button
                       key={index}
                       variant={
                         selectedOption === option
-                          ? option === currentQuestion.correctAnswer
+                          ? option === currentQuestion.correct_answer
                             ? "default"
                             : "destructive"
-                          : option === currentQuestion.correctAnswer &&
+                          : option === currentQuestion.correct_answer &&
                               showAnswer
                             ? "default"
                             : "outline"
                       }
                       className={`w-full justify-start text-left p-4 h-auto ${
                         selectedOption === option
-                          ? option === currentQuestion.correctAnswer
+                          ? option === currentQuestion.correct_answer
                             ? "bg-green-600 hover:bg-green-700"
                             : "bg-red-600 hover:bg-red-700"
-                          : option === currentQuestion.correctAnswer && showAnswer
+                          : option === currentQuestion.correct_answer && showAnswer
                             ? "bg-green-600 hover:bg-green-700"
                             : ""
                       }`}
-                      onClick={() => !showAnswer && handleOptionSelect(option)}
+                      onClick={() => !showAnswer && handleOptionSelect(option as string)}
                       disabled={showAnswer}
                     >
                       <span className="mr-2">{String.fromCharCode(65 + index)}.</span>
                       {option}
-                      {selectedOption === option && option === currentQuestion.correctAnswer && (
+                      {selectedOption === option && option === currentQuestion.correct_answer && (
                         <Check className="ml-auto h-5 w-5" />
                       )}
-                      {selectedOption === option && option !== currentQuestion.correctAnswer && (
+                      {selectedOption === option && option !== currentQuestion.correct_answer && (
                         <X className="ml-auto h-5 w-5" />
                       )}
-                      {selectedOption !== option && option === currentQuestion.correctAnswer && showAnswer && (
+                      {selectedOption !== option && option === currentQuestion.correct_answer && showAnswer && (
                         <Check className="ml-auto h-5 w-5" />
                       )}
                     </Button>

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -27,60 +27,197 @@ import {
   CheckCircle,
   ChevronRight,
   Lock,
+  Loader2,
 } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from "@/components/AuthProvider";
+import { progressService } from "@/services/ProgressService";
+import { achievementsService } from "@/services/AchievementsService";
+import { subjectsService } from "@/services/SubjectsService";
 
-interface PerformanceAnalyticsProps {
-  strengths?: string[];
-  weaknesses?: string[];
-  averageTimePerQuestion?: number;
-  frequentlyMissedConcepts?: { concept: string; percentage: number }[];
-  syllabusCoverage?: number;
-  achievements?: { title: string; description: string; unlocked: boolean }[];
-  skillLevels?: { skill: string; level: number; maxLevel: number }[];
+interface PerformanceAnalyticsProps {}
+
+interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  unlocked: boolean;
 }
 
-const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
-  strengths = ["Geometry", "Algebra", "Modern Physics"],
-  weaknesses = ["Trigonometry", "Organic Chemistry", "Thermodynamics"],
-  averageTimePerQuestion = 45,
-  frequentlyMissedConcepts = [
-    { concept: "Integration by Parts", percentage: 75 },
-    { concept: "Acid-Base Reactions", percentage: 68 },
-    { concept: "Newton's Laws Applications", percentage: 62 },
-  ],
-  syllabusCoverage = 68,
-  achievements = [
-    {
-      title: "Math Master",
-      description: "Completed all math modules with 90%+ accuracy",
-      unlocked: true,
-    },
-    {
-      title: "Physics Pioneer",
-      description: "Solved 100 physics problems",
-      unlocked: true,
-    },
-    {
-      title: "Chemistry Champion",
-      description: "Mastered all periodic table elements",
-      unlocked: false,
-    },
-    {
-      title: "Biology Brilliance",
-      description: "Completed all biology chapters",
-      unlocked: false,
-    },
-  ],
-  skillLevels = [
-    { skill: "Mathematics", level: 7, maxLevel: 10 },
-    { skill: "Physics", level: 6, maxLevel: 10 },
-    { skill: "Chemistry", level: 4, maxLevel: 10 },
-    { skill: "Biology", level: 5, maxLevel: 10 },
-  ],
-}) => {
+interface SkillLevel {
+  skill: string;
+  level: number;
+  maxLevel: number;
+}
+
+interface MissedConcept {
+  concept: string;
+  percentage: number;
+}
+
+const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [expandedAchievement, setExpandedAchievement] = useState<string | null>(null);
+  
+  // States for analytics data
+  const [loading, setLoading] = useState(true);
+  const [strengths, setStrengths] = useState<string[]>([]);
+  const [weaknesses, setWeaknesses] = useState<string[]>([]);
+  const [averageTimePerQuestion, setAverageTimePerQuestion] = useState<number>(0);
+  const [frequentlyMissedConcepts, setFrequentlyMissedConcepts] = useState<MissedConcept[]>([]);
+  const [syllabusCoverage, setSyllabusCoverage] = useState<number>(0);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [skillLevels, setSkillLevels] = useState<SkillLevel[]>([]);
+  const [subjects, setSubjects] = useState<Record<string, string>>({});
+  
+  useEffect(() => {
+    const loadAnalytics = async () => {
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+      
+      try {
+        setLoading(true);
+        
+        // Load subjects first for reference
+        const subjectsData = await subjectsService.getAll();
+        const subjectsMap: Record<string, string> = {};
+        subjectsData.forEach(subject => {
+          subjectsMap[subject.id] = subject.name;
+        });
+        setSubjects(subjectsMap);
+        
+        // Load user analytics from progress service
+        const analytics = await progressService.getUserAnalytics(user.id);
+        
+        // Load user progress data
+        const progressData = await progressService.getProgressByUserId(user.id);
+        
+        // Calculate syllabus coverage
+        let completedTopics = 0;
+        let totalTopics = 0;
+        
+        for (const subject of subjectsData) {
+          const subjectWithTopics = await subjectsService.getById(subject.id);
+          totalTopics += subjectWithTopics.topics.length;
+          
+          // Count completed topics for this subject
+          const completedTopicsForSubject = progressData.filter(
+            p => p.subject_id === subject.id && p.completion_percentage === 100
+          ).length;
+          
+          completedTopics += completedTopicsForSubject;
+        }
+        
+        setSyllabusCoverage(
+          totalTopics > 0 ? Math.round((completedTopics / totalTopics) * 100) : 0
+        );
+        
+        // Set average time
+        setAverageTimePerQuestion(Math.round(analytics.averageTime));
+        
+        // Check existing achievements
+        await achievementsService.checkAchievements(user.id);
+        const userAchievements = await achievementsService.getUserAchievements(user.id);
+        const allAchievements = await achievementsService.getAll();
+        
+        // Format achievements
+        const formattedAchievements: Achievement[] = allAchievements.map(achievement => {
+          const isUnlocked = userAchievements.some(
+            ua => ua.achievement_id === achievement.id
+          );
+          
+          return {
+            id: achievement.id,
+            title: achievement.title,
+            description: achievement.description,
+            unlocked: isUnlocked,
+          };
+        });
+        
+        setAchievements(formattedAchievements);
+        
+        // Initialize subject performance tracking
+        let subjectPerformance: Record<string, { correct: number, total: number }> = {};
+        
+        // For strengths and weaknesses, we'll analyze response data
+        if (progressData.length > 0) {
+          // Group by subject_id to calculate performance per subject
+          progressData.forEach(progress => {
+            if (!progress.subject_id) return;
+            
+            if (!subjectPerformance[progress.subject_id]) {
+              subjectPerformance[progress.subject_id] = { correct: 0, total: 0 };
+            }
+            
+            // Approximate correct responses based on completion percentage
+            subjectPerformance[progress.subject_id].correct += progress.completion_percentage;
+            subjectPerformance[progress.subject_id].total += 100; // Assuming 100% is max
+          });
+          
+          // Convert to array and sort
+          const performanceArray = Object.entries(subjectPerformance)
+            .map(([subjectId, performance]) => ({
+              subjectId,
+              accuracy: performance.total > 0 ? (performance.correct / performance.total) : 0
+            }))
+            .sort((a, b) => b.accuracy - a.accuracy);
+          
+          // Set strengths (top 3)
+          setStrengths(
+            performanceArray
+              .slice(0, 3)
+              .map(item => subjectsMap[item.subjectId] || 'Unknown')
+              .filter(Boolean)
+          );
+          
+          // Set weaknesses (bottom 3)
+          setWeaknesses(
+            performanceArray
+              .slice(-3)
+              .reverse()
+              .map(item => subjectsMap[item.subjectId] || 'Unknown')
+              .filter(Boolean)
+          );
+        }
+        
+        // Set skill levels based on progress data
+        const skillLevelsData = Object.entries(subjectPerformance)
+          .map(([subjectId, performance]) => ({
+            skill: subjectsMap[subjectId] || 'Unknown',
+            level: Math.round((performance.correct / performance.total) * 10),
+            maxLevel: 10
+          }))
+          .filter(skill => skill.skill !== 'Unknown');
+        
+        setSkillLevels(skillLevelsData);
+        
+        // For missed concepts, this would require detailed topic-level analytics
+        // For now, we'll just use some default placeholders
+        setFrequentlyMissedConcepts([
+          { concept: "Integration by Parts", percentage: 75 },
+          { concept: "Acid-Base Reactions", percentage: 68 },
+          { concept: "Newton's Laws Applications", percentage: 62 },
+        ]);
+        
+      } catch (error) {
+        console.error("Error loading analytics:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load your analytics data. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadAnalytics();
+  }, [user, toast]);
 
   const handleSelectSkill = (skill: string) => {
     setSelectedSkill(skill === selectedSkill ? null : skill);
@@ -90,7 +227,7 @@ const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
     setExpandedAchievement(title === expandedAchievement ? null : title);
   };
 
-  // Detailed skill data for the skill tree
+  // Detailed skill data for the skill tree - we could enhance this with real data
   const detailedSkillData = {
     Mathematics: [
       { subtopic: "Algebra", level: 8, maxLevel: 10 },
@@ -123,6 +260,30 @@ const PerformanceAnalytics: React.FC<PerformanceAnalyticsProps> = ({
   // Calculate total achievements and unlocked achievements
   const totalAchievements = achievements.length;
   const unlockedAchievements = achievements.filter(a => a.unlocked).length;
+
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 text-center">
+        <AlertTriangle className="h-12 w-12 text-amber-500 mb-4" />
+        <h2 className="text-2xl font-bold mb-2">Authentication Required</h2>
+        <p className="text-muted-foreground mb-4">
+          Please sign in to view your performance analytics and track your progress.
+        </p>
+        <Button variant="default" onClick={() => window.location.href = '/login'}>
+          Sign In
+        </Button>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-[600px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading analytics...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-background p-6 rounded-xl w-full max-w-6xl mx-auto">

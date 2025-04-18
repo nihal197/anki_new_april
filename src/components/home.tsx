@@ -1,11 +1,11 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   BookOpen,
   Award,
   Brain,
-  User,
+  User as UserIcon,
   Bell,
   ChevronRight,
   Zap,
@@ -26,39 +26,158 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/components/AuthProvider";
+import { progressService } from "@/services/ProgressService";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/lib/supabase";
+
+// Define interface for progress data
+interface ProgressData {
+  id: string;
+  completion_percentage: number;
+  subjects?: {
+    id: string;
+    name: string;
+  };
+}
+
+// Define interface for extended user
+interface ExtendedUser {
+  id: string;
+  email?: string;
+  display_name?: string;
+  avatar_url?: string;
+}
 
 export default function Home() {
-  // Mock data for the dashboard
-  const studentProgress = {
-    overall: 68,
-    subjects: [
-      { name: "Mathematics", progress: 75, color: "bg-blue-500" },
-      { name: "Physics", progress: 62, color: "bg-purple-500" },
-      { name: "Chemistry", progress: 48, color: "bg-green-500" },
-      { name: "Biology", progress: 85, color: "bg-yellow-500" },
-    ],
-    level: 5,
-    badges: [
-      {
-        name: "Math Master",
-        icon: "🧮",
-        description: "Completed 75% of Math syllabus",
-      },
-      {
-        name: "Physics Pro",
-        icon: "⚛️",
-        description: "Solved 100 Physics problems",
-      },
-      {
-        name: "Streak Keeper",
-        icon: "🔥",
-        description: "Maintained a 7-day study streak",
-      },
-    ],
-    streakDays: 7,
-    points: 1250,
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [userData, setUserData] = useState({
+    overall: 0,
+    subjects: [] as Array<{id: string, name: string, progress: number, color: string}>,
+    level: 1,
+    badges: [] as Array<{name: string, icon: string, description: string}>,
+    streakDays: 0,
+    points: 0,
+  });
+  const [userProfile, setUserProfile] = useState<ExtendedUser | null>(null);
+
+  // Fetch user progress data
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (!user) return;
+      
+      try {
+        setLoading(true);
+        
+        // Get user analytics
+        const analytics = await progressService.getUserAnalytics(user.id);
+        
+        // Get user profile
+        const profile = await progressService.getUserProfile(user.id);
+        if (profile) {
+          setUserProfile(profile as ExtendedUser);
+        }
+        
+        // Get user achievements
+        const achievements = await progressService.getUserAchievements(user.id);
+        
+        // Get formatted progress data
+        const formattedProgressData = await progressService.getFormattedProgressData(user.id);
+        
+        // Map subject progress data
+        const subjectMap = new Map<string, {id: string, name: string, progress: number, color: string}>();
+        
+        // Process the formatted data
+        formattedProgressData.forEach(item => {
+          if (item.subjectInfo?.id) {
+            const subjectId = item.subjectInfo.id;
+            const subjectName = item.subjectInfo.name;
+            
+            if (!subjectMap.has(subjectId)) {
+              subjectMap.set(subjectId, {
+                id: subjectId,
+                name: subjectName,
+                progress: item.completion_percentage,
+                color: getColorForSubject(subjectName),
+              });
+            }
+          }
+        });
+        
+        const subjectArray = Array.from(subjectMap.values());
+        
+        // Calculate overall progress
+        const overall = subjectArray.length > 0
+          ? Math.round(subjectArray.reduce((acc, subject) => acc + subject.progress, 0) / subjectArray.length)
+          : 0;
+        
+        // Set user data
+        setUserData({
+          overall,
+          subjects: subjectArray,
+          level: calculateLevel(analytics.completedTopics),
+          badges: achievements.map(achievement => ({
+            name: achievement.name,
+            icon: achievement.icon,
+            description: achievement.description,
+          })),
+          streakDays: analytics.streakDays,
+          points: analytics.totalPoints,
+        });
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        toast({
+          title: 'Error',
+          description: 'Could not load your dashboard data. Please try again later.',
+          variant: 'destructive'
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchUserData();
+  }, [user, toast]);
+
+  // Calculate user level based on completed topics
+  const calculateLevel = (completedTopics) => {
+    if (completedTopics > 15) return 5;
+    if (completedTopics > 10) return 4;
+    if (completedTopics > 7) return 3;
+    if (completedTopics > 3) return 2;
+    return 1;
+  };
+  
+  // Get color for subject progress bar
+  const getColorForSubject = (subjectName) => {
+    if (!subjectName) return 'bg-blue-500';
+    
+    const subjectColors = {
+      'Mathematics': 'bg-blue-500',
+      'Quantitative Reasoning': 'bg-blue-500',
+      'Physics': 'bg-purple-500',
+      'Chemistry': 'bg-green-500',
+      'Biology': 'bg-yellow-500',
+      'Verbal Reasoning': 'bg-red-500',
+      'Data Structures': 'bg-cyan-500',
+      'Algorithms': 'bg-indigo-500',
+    };
+    
+    const name = subjectName.toLowerCase();
+    
+    for (const [key, value] of Object.entries(subjectColors)) {
+      if (name.includes(key.toLowerCase())) {
+        return value;
+      }
+    }
+    
+    return 'bg-blue-500';
   };
 
+  // Mock data for tasks and topics (these would be replaced with real data in a full implementation)
   const upcomingTasks = [
     {
       id: 1,
@@ -94,6 +213,37 @@ export default function Home() {
     author: "Helen Hayes",
   };
 
+  // Loading state rendering
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background pb-10">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center">
+              <Skeleton className="h-12 w-12 rounded-full" />
+              <div className="ml-4">
+                <Skeleton className="h-6 w-48 mb-2" />
+                <Skeleton className="h-4 w-64" />
+              </div>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <Skeleton className="h-52 w-full" />
+            <Skeleton className="h-52 w-full col-span-2" />
+            <Skeleton className="h-52 w-full" />
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Skeleton className="h-80 w-full" />
+            <Skeleton className="h-80 w-full" />
+            <Skeleton className="h-80 w-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background pb-10">
       <div className="container mx-auto px-4 py-6">
@@ -101,13 +251,13 @@ export default function Home() {
           <div className="flex items-center">
             <Avatar className="h-12 w-12 border-2 border-primary">
               <AvatarImage
-                src="https://api.dicebear.com/7.x/avataaars/svg?seed=student123"
-                alt="Student"
+                src={userProfile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`}
+                alt={userProfile?.display_name || "User"}
               />
-              <AvatarFallback>ST</AvatarFallback>
+              <AvatarFallback>{userProfile?.display_name?.substring(0, 2) || "?"}</AvatarFallback>
             </Avatar>
-            <div>
-              <h1 className="text-2xl font-bold">Welcome back, Rahul!</h1>
+            <div className="ml-4">
+              <h1 className="text-2xl font-bold">Welcome back, {userProfile?.display_name || "Student"}!</h1>
               <p className="text-muted-foreground">
                 Let's continue your learning journey
               </p>
@@ -118,7 +268,7 @@ export default function Home() {
               <Bell className="h-5 w-5" />
             </Button>
             <Button variant="outline">
-              <User className="h-5 w-5 mr-2" />
+              <UserIcon className="h-5 w-5 mr-2" />
               Profile
             </Button>
           </div>
@@ -146,7 +296,7 @@ export default function Home() {
                   >
                     <div className="absolute inset-0 flex items-center justify-center">
                       <span className="text-3xl font-bold">
-                        {studentProgress.overall}%
+                        {userData.overall}%
                       </span>
                     </div>
                     <svg className="h-full w-full" viewBox="0 0 100 100">
@@ -166,7 +316,7 @@ export default function Home() {
                         stroke="currentColor"
                         strokeWidth="8"
                         strokeLinecap="round"
-                        strokeDasharray={`${studentProgress.overall * 2.83} 283`}
+                        strokeDasharray={`${userData.overall * 2.83} 283`}
                         className="text-primary"
                         transform="rotate(-90 50 50)"
                       />
@@ -183,22 +333,33 @@ export default function Home() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {studentProgress.subjects.map((subject, index) => (
-                    <div key={index} className="space-y-1">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium">
-                          {subject.name}
-                        </span>
-                        <span className="text-sm text-muted-foreground">
-                          {subject.progress}%
-                        </span>
+                  {userData.subjects.length > 0 ? (
+                    userData.subjects.map((subject, index) => (
+                      <div key={index} className="space-y-1">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium">
+                            {subject.name}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            {subject.progress}%
+                          </span>
+                        </div>
+                        <Progress
+                          value={subject.progress}
+                          className={subject.color}
+                        />
                       </div>
-                      <Progress
-                        value={subject.progress}
-                        className={subject.color}
-                      />
+                    ))
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8">
+                      <p className="text-muted-foreground text-center mb-4">
+                        No subject progress yet. Start studying to see your progress!
+                      </p>
+                      <Link to="/study">
+                        <Button>Start Learning</Button>
+                      </Link>
                     </div>
-                  ))}
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -216,7 +377,7 @@ export default function Home() {
                   <div>
                     <p className="text-sm font-medium">Badges Earned</p>
                     <p className="text-xl font-bold">
-                      {studentProgress.badges.length}
+                      {userData.badges.length}
                     </p>
                   </div>
                 </div>
@@ -227,7 +388,7 @@ export default function Home() {
                   <div>
                     <p className="text-sm font-medium">Points</p>
                     <p className="text-xl font-bold">
-                      {studentProgress.points}
+                      {userData.points}
                     </p>
                   </div>
                 </div>
@@ -238,7 +399,7 @@ export default function Home() {
                   <div>
                     <p className="text-sm font-medium">Streak</p>
                     <p className="text-xl font-bold">
-                      {studentProgress.streakDays} days 🔥
+                      {userData.streakDays} days 🔥
                     </p>
                   </div>
                 </div>
@@ -366,7 +527,7 @@ export default function Home() {
               </CardHeader>
               <CardContent className="pt-4">
                 <div className="flex justify-center gap-3 pb-2">
-                  {studentProgress.badges.map((badge, index) => (
+                  {userData.badges.map((badge, index) => (
                     <motion.div
                       key={index}
                       className="flex-shrink-0 w-24 flex flex-col items-center text-center p-3 rounded-lg border bg-white dark:bg-card/80 shadow-sm"
@@ -414,7 +575,7 @@ export default function Home() {
                 <Card className="h-full border border-border/40 bg-white dark:bg-card/80 shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
                   <CardContent className="p-4 flex flex-col items-center text-center">
                     <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center mb-2">
-                      <User className="h-5 w-5 text-green-700" />
+                      <UserIcon className="h-5 w-5 text-green-700" />
                     </div>
                     <h3 className="font-medium">About You</h3>
                     <p className="text-xs text-muted-foreground mt-1">
